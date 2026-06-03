@@ -426,12 +426,12 @@ def qfh_antenna(spec: PartSpec) -> bd.Compound:
 def main() -> None:
     """Generate the QFH antenna support structure and export."""
     input_spec = QfhInputSpec(
-        freq=913.0,  # MHz
-        wdiam=1.5,  # conductor outer diameter (mm)
+        frequency_hz=913.0e6,  # MHz
+        wire_diameter=1.5,  # conductor outer diameter (mm)
         wire_bending_radius=1.5,  # bending radius (mm)
         ratio=0.44,  # width / height ratio
         turns=0.5,  # half-turn helix
-        nrwavel=1.0,  # one wavelength per loop
+        num_wavelengths=1.0,  # one wavelength per loop
     )
     qfh_result = calculate_qfh(input_spec)
 
@@ -442,8 +442,8 @@ def main() -> None:
         #         PartSpec(
         #             qfh=calculate_qfh(
         #                 QfhInputSpec(
-        #                     freq=436.0,
-        #                     wdiam=1.5,
+        #                     frequency_hz=436.0e6,
+        #                     wire_diameter=1.5,
         #                     wire_bending_radius=1.5,
         #                 )
         #             )
