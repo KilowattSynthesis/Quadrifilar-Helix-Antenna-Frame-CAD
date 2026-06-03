@@ -289,9 +289,29 @@ def _make_channel(
 # ---------------------------------------------------------------------------
 # Public model function
 # ---------------------------------------------------------------------------
+def qfh_antenna_wires(spec: PartSpec) -> bd.Compound | bd.Part:
+    """Create the helical wire channels as separate solids.
+
+    This is not used in the main model, but can be useful for testing and
+    visualization of the channel geometry.
+
+    """
+    channel_specs = [
+        (0, spec.hh1, spec.hwire11),
+        (180, spec.hh1, spec.hwire11),
+        (90, spec.hh2, spec.hwire12),
+        (270, spec.hh2, spec.hwire12),
+    ]
+
+    p = bd.Part(None)
+
+    for phi, height, z_off in channel_specs:
+        channel = _make_channel(spec, phi, height, z_off)
+        p += channel
+    return p
 
 
-def qfh_antenna(spec: PartSpec) -> bd.Compound:
+def qfh_antenna_frame(spec: PartSpec) -> bd.Compound:
     """Create the QFH antenna support structure.
 
     The model consists of:
@@ -436,7 +456,10 @@ def main() -> None:
     qfh_result = calculate_qfh(input_spec)
 
     parts = {
-        "QFH_Antenna_913_MHz": show(qfh_antenna(PartSpec(qfh=qfh_result))),
+        "QFH_Antenna_913_MHz": show(
+            qfh_antenna_frame(PartSpec(qfh=qfh_result))
+        ),
+        "qfh_antenna_wires": show(qfh_antenna_wires(PartSpec(qfh=qfh_result))),
         # "QFH_Antenna_436_MHz": show(
         #     qfh_antenna(
         #         PartSpec(
