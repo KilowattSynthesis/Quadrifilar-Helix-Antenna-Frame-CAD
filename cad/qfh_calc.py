@@ -187,9 +187,11 @@ class QfhInputSpec:
     freq: float  # MHz
     wdiam: float  # mm  conductor outer diameter
     wrad: float  # mm  bending radius
-    ratio: float  # width/height ratio
-    turns: float  # number of turns (0.25 / 0.5 / 0.75 / 1.0)
-    nrwavel: float  # loop circumference in wavelengths (normally 1)
+
+    # Extremely-default settings:
+    ratio: float = 0.44  # width/height ratio
+    turns: float = 0.5  # number of turns (0.25 / 0.5 / 0.75 / 1.0)
+    nrwavel: float = 1.0  # loop circumference in wavelengths (normally 1)
 
     def to_pretty_str(self, prefix: str = "") -> str:
         """Return a human-readable strrepresentation of the input parameters.
@@ -354,6 +356,7 @@ if __name__ == "__main__":
         freq=137.5,
         wdiam=7.0,
         wrad=15.0,
+        # Extremely-default settings:
         ratio=0.44,
         turns=0.5,
         nrwavel=1.0,
