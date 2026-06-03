@@ -447,19 +447,19 @@ def main() -> None:
     # --- build & display -------------------------------------------------
     parts = {
         "QFH_Antenna_913_MHz": show(qfh_antenna(PartSpec(qfh=qfh_result))),
-        "QFH_Antenna_436_MHz": show(
-            qfh_antenna(
-                PartSpec(
-                    qfh=calculate_qfh(
-                        QfhInputSpec(
-                            freq=436.0,
-                            wdiam=1.5,
-                            wrad=1.5,
-                        )
-                    )
-                )
-            )
-        ),
+        # "QFH_Antenna_436_MHz": show(
+        #     qfh_antenna(
+        #         PartSpec(
+        #             qfh=calculate_qfh(
+        #                 QfhInputSpec(
+        #                     freq=436.0,
+        #                     wdiam=1.5,
+        #                     wrad=1.5,
+        #                 )
+        #             )
+        #         )
+        #     )
+        # ),
     }
 
     logger.info("Showing CAD model(s)")
