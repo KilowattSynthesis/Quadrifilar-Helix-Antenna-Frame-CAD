@@ -191,6 +191,22 @@ class QfhInputSpec:
     turns: float  # number of turns (0.25 / 0.5 / 0.75 / 1.0)
     nrwavel: float  # loop circumference in wavelengths (normally 1)
 
+    def to_pretty_str(self, prefix: str = "") -> str:
+        """Return a human-readable strrepresentation of the input parameters.
+
+        Spans multiple lines for better readability.
+        """
+        return "\n".join(
+            [
+                prefix + f"Frequency: {self.freq} MHz",
+                prefix + f"Conductor diameter: {self.wdiam} mm",
+                prefix + f"Bending radius: {self.wrad} mm",
+                prefix + f"Diameter/height ratio: {self.ratio}",
+                prefix + f"Turns: {self.turns}",
+                prefix + f"Loop length: {self.nrwavel} wavelengths",
+            ]
+        )
+
 
 @dataclass
 class LoopResult:
@@ -219,6 +235,21 @@ class QfhResult:
     # Loop dimensions
     large_loop: LoopResult
     small_loop: LoopResult
+
+
+def _make_loop(
+    total: float, total_c: float, geo: dict[str, float]
+) -> LoopResult:
+    return LoopResult(
+        total=total,
+        total_comp=total_c,
+        vert=geo["vert"],
+        vert_comp=geo["vert_comp"],
+        height=geo["height"],
+        idiam=geo["idiam"],
+        rad=geo["rad"],
+        rad_comp=geo["rad_comp"],
+    )
 
 
 def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
@@ -256,27 +287,13 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
         qfh_input_spec.wdiam,
     )
 
-    def make_loop(
-        total: float, total_c: float, geo: dict[str, float]
-    ) -> LoopResult:
-        return LoopResult(
-            total=total,
-            total_comp=total_c,
-            vert=geo["vert"],
-            vert_comp=geo["vert_comp"],
-            height=geo["height"],
-            idiam=geo["idiam"],
-            rad=geo["rad"],
-            rad_comp=geo["rad_comp"],
-        )
-
     return QfhResult(
         wavelength=wavel,
         wavelength_comp=wavelc,
         bending_correction=bcorr,
         optimal_diam=optd,
-        large_loop=make_loop(total1, total1c, geo1),
-        small_loop=make_loop(total2, total2c, geo2),
+        large_loop=_make_loop(total1, total1c, geo1),
+        small_loop=_make_loop(total2, total2c, geo2),
     )
 
 
@@ -289,13 +306,18 @@ def _fmt(value: float, decimals: int = 1) -> str:
     return f"{value:.{decimals}f}"
 
 
-def print_results(r: QfhResult) -> None:
+def print_results(input_spec: QfhInputSpec, r: QfhResult) -> None:
     """Print QFH calculation results in a readable format."""
     sep = "-" * 48
 
     print(sep)
     print("  QFH Antenna Calculator")
     print(sep)
+    print("INPUT PARAMETERS:")
+    print(input_spec.to_pretty_str(prefix="  "))
+
+    print(sep)
+    print("RESULTS:")
     print(f"  Wavelength             : {_fmt(r.wavelength)} mm")
     print(f"  Compensated wavelength : {_fmt(r.wavelength_comp)} mm")
     print(f"  Bending correction     : {_fmt(r.bending_correction)} mm")
@@ -327,15 +349,14 @@ def print_results(r: QfhResult) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Default: 137.5 MHz NOAA satellite receive antenna
-    results = calculate_qfh(
-        QfhInputSpec(
-            freq=137.5,
-            wdiam=7.0,
-            wrad=15.0,
-            ratio=0.44,
-            turns=0.5,
-            nrwavel=1.0,
-        )
+    # Default: 137.5 MHz NOAA satellite receive antenna.
+    input_spec = QfhInputSpec(
+        freq=137.5,
+        wdiam=7.0,
+        wrad=15.0,
+        ratio=0.44,
+        turns=0.5,
+        nrwavel=1.0,
     )
-    print_results(results)
+    results = calculate_qfh(input_spec)
+    print_results(input_spec, r=results)
