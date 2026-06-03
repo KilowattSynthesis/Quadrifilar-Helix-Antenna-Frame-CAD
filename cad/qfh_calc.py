@@ -10,7 +10,7 @@ Usage:
 ```python
 results = calculate_qfh(
     freq=137.5,
-    wdiam=7, wrad=15,
+    wdiam=7, wire_bending_radius=15,
     ratio=0.44, turns=0.5,
     nrwavel=1
 )
@@ -107,12 +107,12 @@ def compensated_wavelength(wavel: float, wdiam: float) -> float:
     return wavel * delta_l(wd_eff)
 
 
-def bending_correction(wrad: float) -> float:
+def bending_correction(wire_bending_radius: float) -> float:
     """Length correction per bend to account for the rounded corner radius.
 
     Each loop has 4 bends; multiply by 4 for total correction.
     """
-    return 2 * wrad - (math.pi * wrad / 2)
+    return 2 * wire_bending_radius - (math.pi * wire_bending_radius / 2)
 
 
 def optimal_diameter(wavelc: float) -> float:
@@ -124,7 +124,7 @@ def _loop_geometry(
     total_compensated: float,
     ratio: float,
     turns: float,
-    wrad: float,
+    wire_bending_radius: float,
     wdiam: float,
 ) -> dict:
     """Compute geometric dimensions for one loop (large or small).
@@ -137,7 +137,7 @@ def _loop_geometry(
         Width-to-height (diameter/height) ratio.
     turns : float
         Number of turns (twist), e.g. 0.5 for 180°.
-    wrad : float
+    wire_bending_radius : float
         Bending radius (mm).
     wdiam : float
         Conductor outer diameter (mm).
@@ -158,8 +158,10 @@ def _loop_geometry(
         "vert": vert,
         "height": height,
         "idiam": rad - wdiam,  # internal diameter of cylinder
-        "rad_comp": rad - 2 * wrad,  # horizontal separator (no bends)
-        "vert_comp": vert - 2 * wrad,  # vertical separator (no bends)
+        "rad_comp": rad
+        - 2 * wire_bending_radius,  # horizontal separator (no bends)
+        "vert_comp": vert
+        - 2 * wire_bending_radius,  # vertical separator (no bends)
     }
 
 
@@ -176,7 +178,7 @@ class QfhInputSpec:
     ----------
     freq     : Design frequency (MHz). Default 137.5 MHz (NOAA weather sats).
     wdiam    : Conductor outer diameter (mm).
-    wrad     : Bending radius — center of bend to conductor center (mm).
+    wire_bending_radius: Center of bend to conductor center (mm).
     ratio    : Diameter-to-height ratio (0.44 typical; 0.3-0.4 for better
                horizon coverage).
     turns    : Helix twist in fractions of a full turn (0.5 = 180°).
@@ -186,7 +188,7 @@ class QfhInputSpec:
 
     freq: float  # MHz
     wdiam: float  # mm  conductor outer diameter
-    wrad: float  # mm  bending radius
+    wire_bending_radius: float  # mm  bending radius
 
     # Extremely-default settings:
     ratio: float = 0.44  # width/height ratio
@@ -202,7 +204,7 @@ class QfhInputSpec:
             [
                 prefix + f"Frequency: {self.freq} MHz",
                 prefix + f"Conductor diameter: {self.wdiam} mm",
-                prefix + f"Bending radius: {self.wrad} mm",
+                prefix + f"Bending radius: {self.wire_bending_radius} mm",
                 prefix + f"Diameter/height ratio: {self.ratio}",
                 prefix + f"Turns: {self.turns}",
                 prefix + f"Loop length: {self.nrwavel} wavelengths",
@@ -264,7 +266,7 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
     """
     wavel = wavelength(qfh_input_spec.freq)
     wavelc = compensated_wavelength(wavel, qfh_input_spec.wdiam)
-    bcorr = bending_correction(qfh_input_spec.wrad)
+    bcorr = bending_correction(qfh_input_spec.wire_bending_radius)
     optd = optimal_diameter(wavelc)
 
     # Large loop: 1.026 x compensated wavelength
@@ -274,7 +276,7 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
         total1c,
         qfh_input_spec.ratio,
         qfh_input_spec.turns,
-        qfh_input_spec.wrad,
+        qfh_input_spec.wire_bending_radius,
         qfh_input_spec.wdiam,
     )
 
@@ -285,7 +287,7 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
         total2c,
         qfh_input_spec.ratio,
         qfh_input_spec.turns,
-        qfh_input_spec.wrad,
+        qfh_input_spec.wire_bending_radius,
         qfh_input_spec.wdiam,
     )
 
@@ -355,7 +357,7 @@ if __name__ == "__main__":
     input_spec = QfhInputSpec(
         freq=137.5,
         wdiam=7.0,
-        wrad=15.0,
+        wire_bending_radius=15.0,
         # Extremely-default settings:
         ratio=0.44,
         turns=0.5,

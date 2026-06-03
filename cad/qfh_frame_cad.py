@@ -39,10 +39,16 @@ class PartSpec:
         Number of bars in each axis of the base grid.
     mesh_bar_width:
         Width of each bar in the base grid (mm).
-    helix_spline_pts:
-        Number of interpolation points used when building each elliptic helix
-        spline.  Higher values give a smoother groove at the cost of longer
-        build time.  64 is a good default; raise to 120+ for final export.
+    channel_outer_scale:
+        ``r_outer = wire_diameter * channel_outer_scale``.  Controls the
+        C-clip body size and wall thickness.
+    channel_bore_clearance:
+        ``r_bore = wire_diameter/2 + channel_bore_clearance``.  Clearance
+        so the wire slides in without binding.
+    channel_opening_ratio:
+        Slot opening = ``wire_diameter * channel_opening_ratio``.  Must be
+        < 1.0 so the opening is narrower than the wire and retains it.
+        Smaller values grip more firmly but require more insertion force.
 
     """
 
@@ -53,25 +59,26 @@ class PartSpec:
     cylinder_height: float = 120.0  # support cylinder height
     extrusion_width: float = 0.6  # tube wall thickness
 
-    # Base safety-grid parameters.
+    # Base safety-grid parameters
     pedestal_height: float = 1.0
     mesh_size: float = 100.0  # grid footprint (square)
     mesh_bars: int = 5  # bars per axis
-    mesh_bar_width: float = 1.2  # bar width
+    mesh_bar_width: float = 1.2
 
-    helix_spline_pts: int = 64  # spline path resolution
-    helix_n_sections: int = 8  # number of cross-section planes along the helix
-
-    # Note: helix_n_sections > 8 may trigger a BRepOffsetAPI_MakePipeShell
-    # failure in the underlying OCCT kernel for this profile shape; 8 gives
-    # adequate smoothness.
+    # Wire-channel C-clip snap-fit geometry
+    channel_outer_scale: float = 1.2
+    channel_bore_clearance: float = 0.1
+    channel_opening_ratio: float = 0.7
 
     def __post_init__(self) -> None:
-        """Validate the cylinder is tall enough to contain both helices."""
+        """Validate spec parameters."""
         required = max(self.qfh.large_loop.height, self.qfh.small_loop.height)
         assert self.cylinder_height >= required, (
             f"cylinder_height ({self.cylinder_height:.1f} mm) must be >= "
             f"max helix height ({required:.1f} mm)"
+        )
+        assert 0.0 < self.channel_opening_ratio < 1.0, (
+            "channel_opening_ratio must be in (0, 1)"
         )
 
     # ------------------------------------------------------------------
@@ -99,10 +106,7 @@ class PartSpec:
 
     @property
     def d2(self) -> float:
-        """Small-helix full diameter (mm).
-
-        See :attr:`d1` - ``LoopResult.rad`` is the full diameter.
-        """
+        """Small-helix full diameter (mm)."""
         return self.qfh.small_loop.rad
 
     @property
@@ -147,24 +151,60 @@ class PartSpec:
         """Y/X axis ratio of the elliptic tube (D2/D1)."""
         return self.d2 / self.d1
 
-    # Elliptic helix-path semi-axes
+    # Channel helix placement: centroid on tube outer wall
     @property
-    def helix_a(self) -> float:
-        """X semi-axis of the wire-channel centreline ellipse (mm).
+    def channel_helix_radius(self) -> float:
+        """Radius of the circular helix path for each wire channel (mm).
 
-        Exactly ``tube_r_outer + wire_diameter/2``: the channel centre sits
-        one wire radius proud of the tube outer wall along X.
+        Placing the channel centroid exactly at ``tube_r_outer`` ensures the
+        channel body always intersects the tube wall regardless of azimuthal
+        angle, which is required for ``fuse(glue=True)`` to work correctly.
         """
-        return self.tube_r_outer + self.wire_diameter / 2.0
+        return self.tube_r_outer
+
+    # Channel cross-section derived quantities
+    @property
+    def channel_r_outer(self) -> float:
+        """Outer radius of the C-clip body (mm)."""
+        return self.wire_diameter * self.channel_outer_scale
 
     @property
-    def helix_b(self) -> float:
-        """Y semi-axis of the wire-channel centreline ellipse (mm).
+    def channel_r_bore(self) -> float:
+        """Inner bore radius of the C-clip (mm)."""
+        return self.wire_diameter / 2.0 + self.channel_bore_clearance
 
-        Exactly ``tube_r_outer * tube_scale_y + wire_diameter/2``: the same
-        constant normal offset from the tube outer wall along Y.
+    @property
+    def channel_opening(self) -> float:
+        """Width of the C-clip slot opening (mm)."""
+        return self.wire_diameter * self.channel_opening_ratio
+
+    @property
+    def channel_slot_x(self) -> float:
+        """X coordinate where the slot begins, derived for exact opening width.
+
+        Neat.
         """
-        return self.tube_r_outer * self.tube_scale_y + self.wire_diameter / 2.0
+        return math.sqrt(
+            self.channel_r_bore**2 - (self.channel_opening / 2.0) ** 2
+        )
+
+    @property
+    def channel_slot_rect_cx(self) -> float:
+        """X centre of the slot-cutting rectangle (mm)."""
+        return (
+            self.channel_slot_x
+            + (self.channel_r_outer - self.channel_slot_x) / 2.0
+        )
+
+    @property
+    def channel_slot_rect_w(self) -> float:
+        """Width of the slot-cutting rectangle (mm)."""
+        return (self.channel_r_outer - self.channel_slot_x) * 2.0
+
+    @property
+    def channel_slot_rect_h(self) -> float:
+        """Height of the slot-cutting rectangle (mm)."""
+        return self.channel_r_bore * 2.0 + 0.1
 
     @property
     def mesh_space(self) -> float:
@@ -175,147 +215,74 @@ class PartSpec:
 
 
 # ---------------------------------------------------------------------------
-# Internal geometry helpers
+# Geometry helpers
 # ---------------------------------------------------------------------------
 
 
-def _wirechannel_sketch(plane: bd.Plane, wire_diameter: float) -> bd.Sketch:
-    """C-shaped groove cross-section, normal to *plane*.
+def _channel_face_at_zero(spec: PartSpec) -> bd.Face:
+    """Build the C-clip cross-section face at phi=0 (centroid on +X axis).
 
-    The profile matches the original OpenSCAD ``wirechannel()`` module:
-
-    * outer disc  - radius ``wire_diameter x 0.8``
-    * bore        - radius ``wire_diameter / 2``   (subtracted)
-    * open slot   - rectangle on the outward face  (subtracted)
-
-    The *plane* x-axis must point radially outward so the open slot faces
-    away from the antenna axis.  See :func:`_radial_plane_at_edge_start`.
+    The face is a circular annulus with a slot cut from the outward (+X) face.
+    The slot is narrower than the wire diameter, so the wire snaps in and is
+    retained.  The face is centred at ``(channel_helix_radius, 0)`` in the XY
+    plane and can be rotated to the desired start azimuth before extruding.
 
     """
-    with bd.BuildSketch(plane) as cs:
-        bd.Circle(wire_diameter * 0.8)
-        bd.Circle(wire_diameter / 2.0, mode=bd.Mode.SUBTRACT)
-        with bd.Locations((wire_diameter * 1.5, 0)):
+    r = spec.channel_helix_radius
+    with bd.BuildSketch(bd.Plane.XY) as sk, bd.Locations((r, 0)):
+        bd.Circle(spec.channel_r_outer)
+        bd.Circle(spec.channel_r_bore, mode=bd.Mode.SUBTRACT)
+        with bd.Locations((spec.channel_slot_rect_cx, 0)):
             bd.Rectangle(
-                wire_diameter * 3.0, wire_diameter, mode=bd.Mode.SUBTRACT
+                spec.channel_slot_rect_w,
+                spec.channel_slot_rect_h,
+                mode=bd.Mode.SUBTRACT,
             )
-    return cs.sketch
+    return sk.face()
 
 
-def _elliptic_helix_points(
-    a: float,
-    b: float,
-    height: float,
-    phi_start_deg: float,
-    n_pts: int,
-) -> list[tuple[float, float, float]]:
-    """Compute points along a left-hand (CW) elliptic half-turn helix.
-
-    The helix traces the ellipse  ``x = a·cos(φ)``, ``y = b·sin(φ)``
-    starting at parametric angle *phi_start_deg* and winding clockwise
-    (decreasing φ) for exactly half a turn (π radians), rising linearly
-    from ``z = 0`` to ``z = height``.
-
-    Using *phi_start_deg* (0°, 90°, 180°, 270°) to place all four channel
-    centrelines on the *same* ellipse ensures each stays at a constant
-    ``wire_diameter / 2`` offset from the tube outer wall at every azimuth.
-
-    """
-    phi0 = math.radians(phi_start_deg)
-    return [
-        (
-            a * math.cos(phi0 - math.pi * i / n_pts),
-            b * math.sin(phi0 - math.pi * i / n_pts),
-            height * i / n_pts,
-        )
-        for i in range(n_pts + 1)
-    ]
-
-
-def _helix_wire_solid(
+def _make_channel(
     spec: PartSpec,
     phi_start_deg: float,
     height: float,
     z_offset: float,
-) -> bd.Solid | bd.Part:
-    """Return one helical wire-channel solid.
+) -> bd.Solid:
+    """Return one helical wire-channel via ``extrude_linear_with_rotation``.
 
-    Uses a **multisection sweep**: the C-groove cross-section is placed at
-    ``spec.helix_n_sections + 1`` positions along the elliptic helix path,
-    each independently oriented so its x-axis points radially outward.
-    The sections are then swept together along the spline path.
+    The C-clip face is rotated to *phi_start_deg* then extruded upward by
+    *height* with a -180° twist (one half-turn, clockwise = left-hand winding,
+    matching the negative twist in the original OpenSCAD extrusion).
 
-    Parameters
-    ----------
-    spec:
-        Part specification (provides ``helix_a``, ``helix_b``,
-        ``wire_diameter``, ``helix_spline_pts``, ``helix_n_sections``).
-    phi_start_deg:
-        Start angle on the elliptic helix path (degrees).
-        0° / 180° for the large-helix pair; 90° / 270° for the small pair.
-    height:
-        Axial span of the helix: ``spec.hh1`` or ``spec.hh2`` (mm).
-    z_offset:
-        Vertical translation: ``spec.hwire11`` or ``spec.hwire12`` (mm).
+    Arguments:
+    ---------
+    spec:           Part specification.
+    phi_start_deg:  Start azimuth on the tube surface (degrees).
+                    0°/180° for the large-helix pair; 90°/270° for the small.
+    height:         Axial span: ``spec.hh1`` or ``spec.hh2`` (mm).
+    z_offset:      Bottom of the channel: ``spec.hwire11`` or ``spec.hwire12``.
 
-    Notes
+    Notes:
     -----
-    **Why multisection sweep is required**
-        A single-section ``sweep()`` uses parallel transport (TRANSFORMED
-        mode) to propagate the initial profile orientation along the path.
-        For an elliptic helix the Frenet frame precesses, so the C-slot —
-        which starts radially outward — rotates by up to ~150° by the time
-        it reaches the far end, ending up buried between the channel wall
-        and the tube body.  Placing independently-oriented sections at
-        regular intervals and using ``multisection=True`` forces the slot
-        to remain radially outward at every point.
+    ``extrude_linear_with_rotation`` replaces the previous spline-path
+    multisection sweep.  It is simpler, more reliable, and keeps the slot
+    orientation correct throughout by construction: the face rotates uniformly
+    with the extrusion twist, so the outward-facing slot stays outward at every
+    height.
 
-    **Elliptic helix path**
-        The support tube is elliptic (semi-axes ``tube_r_outer`` x Y).
-        A circular path at radius ``d1/2`` drifts up to ~1.6 mm from the
-        tube wall at the minor-axis positions.  The elliptic path with
-        semi-axes ``helix_a`` and ``helix_b`` gives an exact
-        ``wire_diameter/2`` offset at every azimuth.
-
-    **Left-hand (CW) winding**
-        Matches the negative twist of the original OpenSCAD extrusion.
+    The channel centroid radius equals ``tube_r_outer`` so the body always
+    intersects the tube wall, enabling ``fuse(glue=True)`` to join them.
 
     """
-    pts = _elliptic_helix_points(
-        spec.helix_a,
-        spec.helix_b,
-        height,
-        phi_start_deg,
-        spec.helix_spline_pts,
+    face = _channel_face_at_zero(spec)
+    if phi_start_deg != 0:
+        face = face.rotate(bd.Axis.Z, phi_start_deg)
+
+    solid = bd.Solid.extrude_linear_with_rotation(
+        section=face,
+        center=(0, 0),
+        normal=(0, 0, height),
+        angle=-180.0,  # CW half-turn = left-hand winding
     )
-
-    with bd.BuildLine() as bl:
-        bd.Spline(*pts)
-    path_wire = bl.wire()
-    path_edge = bl.edges()[0]
-
-    # Build one cross-section at each equally-spaced station, each with its
-    # x-axis pointing radially outward at that point on the elliptic path.
-    sections: list[bd.Sketch] = []
-    for i in range(spec.helix_n_sections + 1):
-        t = i / spec.helix_n_sections
-        phi = math.radians(phi_start_deg) - math.pi * t
-        pos = bd.Vector(
-            spec.helix_a * math.cos(phi),
-            spec.helix_b * math.sin(phi),
-            height * t,
-        )
-        tan = path_edge.tangent_at(t)
-        radial = bd.Vector(pos.X, pos.Y, 0).normalized()
-        radial_perp = (radial - tan * radial.dot(tan)).normalized()
-        plane = bd.Plane(origin=pos, x_dir=radial_perp, z_dir=tan)
-        sections.append(_wirechannel_sketch(plane, spec.wire_diameter))
-
-    with bd.BuildPart() as wp:
-        bd.sweep(sections=sections, path=path_wire, multisection=True)
-
-    solid = wp.part
-    assert solid
     return solid.translate((0, 0, z_offset))
 
 
@@ -324,7 +291,7 @@ def _helix_wire_solid(
 # ---------------------------------------------------------------------------
 
 
-def qfh_antenna(spec: PartSpec) -> bd.Solid | bd.Part:
+def qfh_antenna(spec: PartSpec) -> bd.Compound:
     """Create the QFH antenna support structure.
 
     The model consists of:
@@ -346,62 +313,48 @@ def qfh_antenna(spec: PartSpec) -> bd.Solid | bd.Part:
         spec.hh1,
         spec.hh2,
     )
-    logger.debug(
-        "Elliptic helix path: a={:.3f} mm, b={:.3f} mm",
-        spec.helix_a,
-        spec.helix_b,
-    )
 
     # ------------------------------------------------------------------
-    # Pre-build helical wire-channel solids.
-    # They are built outside BuildPart because bd.add() fuses external
-    # pre-built solids incorrectly when they don't overlap the existing
-    # context body (the channels are flush against the tube wall, not
-    # embedded in it).  They are merged via .fuse() after the base body
-    # is complete.
+    # Elliptic support tube (straight extrusion, no twist needed).
     # ------------------------------------------------------------------
-    logger.debug("Building helical wire channels …")
-
-    wire_channels = [
-        _helix_wire_solid(
-            spec, phi_start_deg=0, height=spec.hh1, z_offset=spec.hwire11
-        ),
-        _helix_wire_solid(
-            spec, phi_start_deg=180, height=spec.hh1, z_offset=spec.hwire11
-        ),
-        _helix_wire_solid(
-            spec, phi_start_deg=90, height=spec.hh2, z_offset=spec.hwire12
-        ),
-        _helix_wire_solid(
-            spec, phi_start_deg=270, height=spec.hh2, z_offset=spec.hwire12
-        ),
-    ]
-
-    # ------------------------------------------------------------------
-    # Build the base body: support tube + safety grid + all subtractions.
-    # Everything that can be done inside one BuildPart context is done
-    # here; channels are fused in afterwards.
-    # ------------------------------------------------------------------
-    hole_length = 3.0 * spec.hh1
-    _ca = (bd.Align.CENTER, bd.Align.CENTER, bd.Align.CENTER)
-    grid_offset = spec.mesh_size / 2.0
-
-    logger.debug("Building elliptic support tube and base grid …")
-
-    with bd.BuildPart() as bp:
-        # ---- elliptic support tube -----------------------------------
-        with bd.BuildSketch(bd.Plane.XY):
-            bd.Ellipse(
-                spec.tube_r_outer, spec.tube_r_outer * spec.tube_scale_y
-            )
-            bd.Ellipse(
-                spec.tube_r_inner,
-                spec.tube_r_inner * spec.tube_scale_y,
-                mode=bd.Mode.SUBTRACT,
-            )
+    logger.debug("Building elliptic support tube …")
+    with bd.BuildSketch(bd.Plane.XY) as sk_tube:
+        bd.Ellipse(spec.tube_r_outer, spec.tube_r_outer * spec.tube_scale_y)
+        bd.Ellipse(
+            spec.tube_r_inner,
+            spec.tube_r_inner * spec.tube_scale_y,
+            mode=bd.Mode.SUBTRACT,
+        )
+    with bd.BuildPart() as tube_ctx:
+        bd.add(sk_tube.sketch)
         bd.extrude(amount=spec.cylinder_height)
+    result = tube_ctx.part
+    assert result
 
-        # ---- base safety grid ----------------------------------------
+    # ------------------------------------------------------------------
+    # Wire channels: extrude_linear_with_rotation produces a solid that
+    # twists uniformly so the C-slot stays radially outward throughout.
+    # fuse(glue=True) joins touching-but-not-overlapping surfaces cleanly.
+    # ------------------------------------------------------------------
+    logger.debug("Building and fusing helical wire channels …")
+
+    channel_specs = [
+        (0, spec.hh1, spec.hwire11),
+        (180, spec.hh1, spec.hwire11),
+        (90, spec.hh2, spec.hwire12),
+        (270, spec.hh2, spec.hwire12),
+    ]
+    for phi, height, z_off in channel_specs:
+        channel = _make_channel(spec, phi, height, z_off)
+        result = result.fuse(channel, glue=True)
+        assert isinstance(result, bd.Solid | bd.Part | bd.Compound)
+
+    # ------------------------------------------------------------------
+    # Base safety grid.
+    # ------------------------------------------------------------------
+    logger.debug("Building base safety grid …")
+    grid_offset = spec.mesh_size / 2.0
+    with bd.BuildPart() as grid_ctx:
         for i in range(1, spec.mesh_bars):
             xc = (
                 i * (spec.mesh_bar_width + spec.mesh_space)
@@ -423,70 +376,43 @@ def qfh_antenna(spec: PartSpec) -> bd.Solid | bd.Part:
                     spec.mesh_size, spec.mesh_bar_width, spec.pedestal_height
                 )
 
-        # ---- wire entry / exit holes ---------------------------------
-        logger.debug("Subtracting wire holes and upper slots …")
-        with bd.Locations((0, 0, spec.hwire11)):
-            bd.Cylinder(
-                spec.wire_diameter / 2.0,
-                hole_length,
-                rotation=(0, 90, 0),
-                align=_ca,
-                mode=bd.Mode.SUBTRACT,
-            )
-        with bd.Locations((0, 0, spec.hwire12)):
-            bd.Cylinder(
-                spec.wire_diameter / 2.0,
-                hole_length,
-                rotation=(90, 0, 0),
-                align=_ca,
-                mode=bd.Mode.SUBTRACT,
-            )
-        with bd.Locations((0, 0, spec.hwire21)):
-            bd.Cylinder(
-                spec.wire_diameter / 2.0,
-                hole_length,
-                rotation=(0, 90, 0),
-                align=_ca,
-                mode=bd.Mode.SUBTRACT,
-            )
-        with bd.Locations((0, 0, spec.hwire22)):
-            bd.Cylinder(
-                spec.wire_diameter / 2.0,
-                hole_length,
-                rotation=(90, 0, 0),
-                align=_ca,
-                mode=bd.Mode.SUBTRACT,
-            )
-
-        # ---- upper open slots ----------------------------------------
-        with bd.Locations((0, 0, spec.hwire21 + spec.cylh2)):
-            bd.Box(
-                spec.cylinder_height,
-                spec.wire_diameter,
-                spec.cylinder_height,
-                mode=bd.Mode.SUBTRACT,
-            )
-        with bd.Locations((0, 0, spec.hwire22 + spec.cylh2)):
-            bd.Box(
-                spec.wire_diameter,
-                spec.cylinder_height,
-                spec.cylinder_height,
-                mode=bd.Mode.SUBTRACT,
-            )
+    grid_ctx_part = grid_ctx.part
+    assert grid_ctx_part
+    result = result.fuse(grid_ctx_part, glue=True)
 
     # ------------------------------------------------------------------
-    # Fuse the pre-built wire channels into the base body.
-    # Using .fuse() rather than bd.add() inside BuildPart because the
-    # channels sit flush against (not embedded in) the tube wall, so
-    # bd.add() would incorrectly report zero intersection and discard
-    # the larger solid.
+    # Wire entry/exit holes and upper open slots.
     # ------------------------------------------------------------------
-    logger.debug("Fusing wire channels into base body …")
-    result = bp.part
-    assert isinstance(result, bd.Part | bd.Solid)
-    for channel in wire_channels:
-        result = result.fuse(channel)
-        assert isinstance(result, bd.Part | bd.Solid)
+    logger.debug("Subtracting wire holes and upper slots …")
+    hole_length = 3.0 * spec.hh1
+    _ca = (bd.Align.CENTER, bd.Align.CENTER, bd.Align.CENTER)
+
+    for z, rot in [
+        (spec.hwire11, (0, 90, 0)),
+        (spec.hwire12, (90, 0, 0)),
+        (spec.hwire21, (0, 90, 0)),
+        (spec.hwire22, (90, 0, 0)),
+    ]:
+        assert isinstance(result, bd.Solid | bd.Part | bd.Compound)
+        result = result - bd.Cylinder(
+            spec.wire_diameter / 2.0,
+            hole_length,
+            rotation=rot,
+            align=_ca,
+        ).translate((0, 0, z))
+
+    result = result - bd.Box(
+        spec.cylinder_height,
+        spec.wire_diameter,
+        spec.cylinder_height,
+        align=_ca,
+    ).translate((0, 0, spec.hwire21 + spec.cylh2))
+    result = result - bd.Box(
+        spec.wire_diameter,
+        spec.cylinder_height,
+        spec.cylinder_height,
+        align=_ca,
+    ).translate((0, 0, spec.hwire22 + spec.cylh2))
 
     assert result
     return result
@@ -499,18 +425,16 @@ def qfh_antenna(spec: PartSpec) -> bd.Solid | bd.Part:
 
 def main() -> None:
     """Generate the QFH antenna support structure and export."""
-    # --- RF calculator ---------------------------------------------------
     input_spec = QfhInputSpec(
         freq=913.0,  # MHz
         wdiam=1.5,  # conductor outer diameter (mm)
-        wrad=1.5,  # bending radius (mm)
+        wire_bending_radius=1.5,  # bending radius (mm)
         ratio=0.44,  # width / height ratio
         turns=0.5,  # half-turn helix
         nrwavel=1.0,  # one wavelength per loop
     )
     qfh_result = calculate_qfh(input_spec)
 
-    # --- build & display -------------------------------------------------
     parts = {
         "QFH_Antenna_913_MHz": show(qfh_antenna(PartSpec(qfh=qfh_result))),
         # "QFH_Antenna_436_MHz": show(
@@ -520,7 +444,7 @@ def main() -> None:
         #                 QfhInputSpec(
         #                     freq=436.0,
         #                     wdiam=1.5,
-        #                     wrad=1.5,
+        #                     wire_bending_radius=1.5,
         #                 )
         #             )
         #         )
@@ -530,10 +454,7 @@ def main() -> None:
 
     logger.info("Showing CAD model(s)")
 
-    # --- export ----------------------------------------------------------
-    (export_folder := Path(__file__).parent.parent / "build").mkdir(
-        exist_ok=True
-    )
+    (export_folder := Path(__file__).parent / "build").mkdir(exist_ok=True)
 
     for name, part in parts.items():
         assert isinstance(part, bd.Part | bd.Solid | bd.Compound), (
