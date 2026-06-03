@@ -136,7 +136,9 @@ def main() -> None:
 
     logger.info("Showing CAD model(s)")
 
-    (export_folder := Path(__file__).parent / "build").mkdir(exist_ok=True)
+    (export_folder := Path(__file__).parent.parent / "build").mkdir(
+        exist_ok=True
+    )
 
     for name, part in parts.items():
         assert isinstance(part, bd.Part | bd.Solid | bd.Compound), (

@@ -362,9 +362,9 @@ def print_results(input_spec: QfhInputSpec, r: QfhResult) -> None:
 if __name__ == "__main__":
     # Default: 137.5 MHz NOAA satellite receive antenna.
     input_spec = QfhInputSpec(
-        frequency_hz=137.5e6,
-        wire_diameter=7.0,
-        wire_bending_radius=15.0,
+        frequency_hz=436e6,
+        wire_diameter=1.5,
+        wire_bending_radius=1.5,
         # Extremely-default settings:
         ratio=0.44,
         turns=0.5,
