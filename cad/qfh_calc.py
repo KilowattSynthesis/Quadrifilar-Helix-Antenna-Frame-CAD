@@ -234,6 +234,8 @@ class LoopResult:
 class QfhResult:
     """Overall result for the geometry of a QFH antenna."""
 
+    input_spec: QfhInputSpec  # Echo the input for reference
+
     # Wavelength data
     wavelength: float  # Free-space wavelength (mm)
     wavelength_comp: float  # Compensated wavelength (mm)
@@ -296,6 +298,7 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
     )
 
     return QfhResult(
+        input_spec=qfh_input_spec,
         wavelength=wavel,
         wavelength_comp=wavelc,
         bending_correction=bcorr,
