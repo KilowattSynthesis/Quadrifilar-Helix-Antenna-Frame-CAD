@@ -27,9 +27,9 @@ The corner: an over-constrained joint
 --------------------------------------
 At the base of a helix the tangent is purely *circumferential + vertical* with
 **no radial component** (e.g. (0, 0.95, 0.30) for the default design).  The bar
-arrives *radially*.  The two are perpendicular, so each corner is a ~90 deg turn
-that lives in the tilted plane spanned by {radial, helix-tangent} -- not a flat
-vertical elbow.
+arrives *radially*.  The two are perpendicular, so each corner is a ~90 deg
+turn that lives in the tilted plane spanned by {radial, helix-tangent} --
+not a flat vertical elbow.
 
 A single circular arc of a fixed radius cannot be exactly tangent to BOTH the
 straight bar AND the *curving* helix at its on-cylinder base point: the helix
@@ -45,20 +45,9 @@ centreline length comes out within ~0.1 % of ``LoopResult.total_comp``.
 Made with Claude Opus.
 """
 
-from build123d import (
-    Axis,
-    Circle,
-    Compound,
-    Helix,
-    Line,
-    Part,
-    Plane,
-    TangentArc,
-    Vector,
-    Wire,
-    export_step,
-    sweep,
-)
+import build123d as bd
+from build123d_ease import show
+from loguru import logger
 
 from cad.qfh_calc import LoopResult, QfhInputSpec, QfhResult, calculate_qfh
 
@@ -68,8 +57,11 @@ from cad.qfh_calc import LoopResult, QfhInputSpec, QfhResult, calculate_qfh
 
 
 def _bar_corner_point(
-    helix_end: Vector, helix_tangent: Vector, vertical_sign: int, rho: float
-) -> Vector:
+    helix_end: bd.Vector,
+    helix_tangent: bd.Vector,
+    vertical_sign: int,
+    rho: float,
+) -> bd.Vector:
     """Point where a corner bend hands off to a straight bar.
 
     Starting from a helix endpoint and stepping one bend-radius ``rho`` along
@@ -78,7 +70,7 @@ def _bar_corner_point(
     arc.  ``vertical_sign`` is -1 at a helix *base* (bend dives down to the
     bar) and +1 at a helix *top* (bend rises over to the bar).
     """
-    radial_out = Vector(helix_end.X, helix_end.Y, 0).normalized()
+    radial_out = bd.Vector(helix_end.X, helix_end.Y, 0).normalized()
     return (
         helix_end + helix_tangent * (vertical_sign * rho) + radial_out * (-rho)
     )
@@ -86,30 +78,33 @@ def _bar_corner_point(
 
 def loop_centerline(
     rad: float, height: float, turns: float, rho: float
-) -> Wire:
-    """Closed centreline wire for one bifilar loop.
+) -> bd.Wire:
+    """Make a closed centreline wire for one bifilar loop.
 
-    Parameters
-    ----------
+    Arguments:
+    ---------
     rad : Cylinder diameter ``D`` (centre-to-centre), i.e. ``LoopResult.rad``.
     height : Antenna height ``H`` (``LoopResult.height``).
     turns : Helix twist in revolutions (``QfhInputSpec.turns``).
     rho : Corner bend radius (``QfhInputSpec.wire_bending_radius``).
+
     """
     radius = rad / 2.0
 
     # Trim the helix height by the vertical reach of the two end bends so the
-    # finished bars land exactly at z = 0 and z = height.  tz is the vertical
-    # fraction of the (unit) helix tangent; one probe helix is enough to get it.
-    probe = Helix(pitch=height / turns, height=height, radius=radius)
+    # finished bars land exactly at z = 0 and z = height.
+    #
+    # tz is the vertical fraction of the (unit) helix tangent; one probe helix
+    # is enough to get it.
+    probe = bd.Helix(pitch=height / turns, height=height, radius=radius)
     tz = abs((probe % 0).Z)
     helix_h = height - 2.0 * rho * tz
     z0 = rho * tz
 
-    side_a = Helix(
+    side_a = bd.Helix(
         pitch=helix_h / turns, height=helix_h, radius=radius
     ).translate((0, 0, z0))
-    side_b = side_a.rotate(Axis.Z, 180)  # the two arms are 180 deg apart
+    side_b = side_a.rotate(bd.Axis.Z, 180)  # the two arms are 180 deg apart
 
     # Endpoints (@) and unit tangents (%) straight from the helix geometry.
     a0, a1 = side_a @ 0, side_a @ 1
@@ -124,13 +119,13 @@ def loop_centerline(
     sb1 = _bar_corner_point(b1, tb1, +1, rho)
 
     # Corner bends: true radius-rho arcs, tangent to the helix at its endpoint.
-    bend_a0 = TangentArc(a0, sa0, tangent=ta0 * -1)
-    bend_a1 = TangentArc(a1, sa1, tangent=ta1 * +1)
-    bend_b0 = TangentArc(b0, sb0, tangent=tb0 * -1)
-    bend_b1 = TangentArc(b1, sb1, tangent=tb1 * +1)
+    bend_a0 = bd.TangentArc(a0, sa0, tangent=ta0 * -1)
+    bend_a1 = bd.TangentArc(a1, sa1, tangent=ta1 * +1)
+    bend_b0 = bd.TangentArc(b0, sb0, tangent=tb0 * -1)
+    bend_b1 = bd.TangentArc(b1, sb1, tangent=tb1 * +1)
 
-    bottom_bar = Line(sb0, sa0)
-    top_bar = Line(sa1, sb1)
+    bottom_bar = bd.Line(sb0, sa0)
+    top_bar = bd.Line(sa1, sb1)
 
     edges = (
         side_a.edges()
@@ -142,24 +137,30 @@ def loop_centerline(
         + bottom_bar.edges()
         + top_bar.edges()
     )
-    wire = Wire(edges)
+    wire = bd.Wire(edges)
     if not wire.is_closed:
-        raise RuntimeError("loop centreline failed to close")
+        msg = "loop centreline failed to close"
+        raise RuntimeError(msg)
     return wire
 
 
 def build_loop(
     loop: LoopResult, turns: float, rho: float, wire_radius: float
-) -> Part:
+) -> bd.Part:
     """Sweep the conductor profile along one loop's centreline -> solid."""
-    wire = loop_centerline(loop.rad, loop.height, turns, rho)
-    profile = Plane(origin=wire @ 0, z_dir=wire % 0) * Circle(wire_radius)
-    return sweep(profile, path=wire)
+    wire = loop_centerline(loop.rad, loop.height, turns=turns, rho=rho)
+    profile = bd.Plane(origin=wire @ 0, z_dir=wire % 0) * bd.Circle(
+        wire_radius
+    )
+    assert isinstance(profile, bd.Sketch)  # Type checking.
+    p = bd.sweep(profile, path=wire)
+    assert isinstance(p, bd.Part)  # Type checking.
+    return p
 
 
 def build_qfh_antenna(
     spec: QfhInputSpec, result: QfhResult | None = None
-) -> Compound:
+) -> bd.Compound:
     """Build the full two-loop QFH antenna for a given input spec.
 
     The large and small loops are kept as *separate* solids in a Compound -- a
@@ -177,11 +178,37 @@ def build_qfh_antenna(
     small = build_loop(
         result.small_loop, spec.turns, spec.wire_bending_radius, wire_radius
     )
-    small = small.rotate(Axis.Z, 90)  # second loop a quarter-turn around
+    small = small.rotate(bd.Axis.Z, 90)  # second loop a quarter-turn around
 
     large.label = "large_loop"
     small.label = "small_loop"
-    return Compound(label="qfh_antenna", children=[large, small])
+    p = bd.Compound(label="qfh_antenna", children=[large, small])
+
+    # Print info about it:
+    bb = p.bounding_box().size
+    logger.debug(
+        f"Built QFH: {len(p.solids())} solids, "
+        f"volume {p.volume:.0f} mm^3, "
+        f"bbox {bb.X:.1f} x {bb.Y:.1f} x {bb.Z:.1f} mm"
+    )
+
+    # Sanity: centreline length vs solver's compensated wire length.
+    for name, lp in (
+        ("large", qfh_result.large_loop),
+        ("small", qfh_result.small_loop),
+    ):
+        w = loop_centerline(
+            lp.rad,
+            lp.height,
+            qfh_input_spec.turns,
+            qfh_input_spec.wire_bending_radius,
+        )
+        logger.debug(
+            f"  {name} loop centreline {w.length:.1f} mm  "
+            f"(solver total_comp {lp.total_comp:.1f} mm)"
+        )
+
+    return p
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +216,7 @@ def build_qfh_antenna(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    spec = QfhInputSpec(
+    qfh_input_spec = QfhInputSpec(
         frequency_hz=436e6,
         wire_diameter=1.5,
         wire_bending_radius=1.5,
@@ -197,32 +224,11 @@ if __name__ == "__main__":
         turns=0.5,
         num_wavelengths=1.0,
     )
-    result = calculate_qfh(spec)
+    qfh_result = calculate_qfh(qfh_input_spec)
 
-    antenna = build_qfh_antenna(spec, result)
+    antenna = build_qfh_antenna(qfh_input_spec, qfh_result)
 
-    bb = antenna.bounding_box().size
-    print(
-        f"Built QFH: {len(antenna.solids())} solids, "
-        f"volume {antenna.volume:.0f} mm^3, "
-        f"bbox {bb.X:.1f} x {bb.Y:.1f} x {bb.Z:.1f} mm"
-    )
-    # Sanity: centreline length vs solver's compensated wire length.
-    for name, lp in (
-        ("large", result.large_loop),
-        ("small", result.small_loop),
-    ):
-        w = loop_centerline(
-            lp.rad, lp.height, spec.turns, spec.wire_bending_radius
-        )
-        print(
-            f"  {name} loop centreline {w.length:.1f} mm  "
-            f"(solver total_comp {lp.total_comp:.1f} mm)"
-        )
-
-    export_step(antenna, "qfh_antenna.step")
+    bd.export_step(antenna, "qfh_antenna.step")
     print("Wrote qfh_antenna.step")
-
-    from build123d_ease import show
 
     show(antenna)
