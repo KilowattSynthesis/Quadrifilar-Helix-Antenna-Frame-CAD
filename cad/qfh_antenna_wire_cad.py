@@ -45,6 +45,8 @@ centreline length comes out within ~0.1 % of ``LoopResult.total_comp``.
 Made with Claude Opus.
 """
 
+from pathlib import Path
+
 import build123d as bd
 from build123d_ease import show
 from loguru import logger
@@ -159,7 +161,7 @@ def build_loop(
 
 
 def build_qfh_antenna(
-    spec: QfhInputSpec, result: QfhResult | None = None
+    qfh_input_spec: QfhInputSpec, qfh_result: QfhResult | None = None
 ) -> bd.Compound:
     """Build the full two-loop QFH antenna for a given input spec.
 
@@ -169,17 +171,24 @@ def build_qfh_antenna(
     axis at z = 0 they geometrically cross at the centre; a real build offsets
     the feed there.  Adjust as needed for your feed arrangement.
     """
-    result = result or calculate_qfh(spec)
-    wire_radius = spec.wire_diameter / 2.0
+    qfh_result = qfh_result or calculate_qfh(qfh_input_spec)
+    wire_radius = qfh_input_spec.wire_diameter / 2.0
 
     large = build_loop(
-        result.large_loop, spec.turns, spec.wire_bending_radius, wire_radius
+        qfh_result.large_loop,
+        qfh_input_spec.turns,
+        qfh_input_spec.wire_bending_radius,
+        wire_radius,
     )
     small = build_loop(
-        result.small_loop, spec.turns, spec.wire_bending_radius, wire_radius
+        qfh_result.small_loop,
+        qfh_input_spec.turns,
+        qfh_input_spec.wire_bending_radius,
+        wire_radius,
     )
-    small = small.rotate(bd.Axis.Z, 90)  # second loop a quarter-turn around
+    small = small.rotate(bd.Axis.Z, 90)  # Second loop a quarter-turn around.
 
+    # Created a named compound (awesome for exploring/viewing).
     large.label = "large_loop"
     small.label = "small_loop"
     p = bd.Compound(label="qfh_antenna", children=[large, small])
@@ -211,24 +220,52 @@ def build_qfh_antenna(
     return p
 
 
-# ---------------------------------------------------------------------------
-# Example / CLI
-# ---------------------------------------------------------------------------
+def main() -> None:
+    """Generate the QFH antenna wires and export."""
+    input_spec_913e6 = QfhInputSpec(
+        frequency_hz=913.0e6,
+        wire_diameter=1.5,  # conductor outer diameter (mm)
+        wire_bending_radius=1.5,  # bending radius (mm)
+        ratio=0.44,  # width / height ratio
+        turns=0.5,  # half-turn helix
+        num_wavelengths=1.0,  # one wavelength per loop
+    )
+    qfh_result_913e6 = calculate_qfh(input_spec_913e6)
+
+    parts = {
+        "QFH_Antenna_913_MHz": show(
+            build_qfh_antenna(input_spec_913e6, qfh_result=qfh_result_913e6)
+        ),
+        "QFH_Antenna_436_MHz": show(
+            build_qfh_antenna(
+                qfh_input_spec=QfhInputSpec(
+                    frequency_hz=436.0e6,
+                    wire_diameter=1.5,
+                    wire_bending_radius=1.5,
+                )
+            )
+        ),
+    }
+
+    logger.info("Showing CAD model(s)")
+
+    (
+        export_folder := Path(__file__).parent.parent
+        / "build"
+        / Path(__file__).stem
+    ).mkdir(exist_ok=True, parents=True)
+
+    for name, part in parts.items():
+        assert isinstance(part, bd.Part | bd.Solid | bd.Compound), (
+            f"{name} is not an expected type ({type(part)})"
+        )
+        if not part.is_manifold:
+            logger.warning('Part "{}" is not manifold', name)
+
+        bd.export_stl(part, str(export_folder / f"{name}.stl"))
+        bd.export_step(part, str(export_folder / f"{name}.step"))
+        logger.info('Exported "{}" to {}', name, export_folder)
+
 
 if __name__ == "__main__":
-    qfh_input_spec = QfhInputSpec(
-        frequency_hz=436e6,
-        wire_diameter=1.5,
-        wire_bending_radius=1.5,
-        ratio=0.44,
-        turns=0.5,
-        num_wavelengths=1.0,
-    )
-    qfh_result = calculate_qfh(qfh_input_spec)
-
-    antenna = build_qfh_antenna(qfh_input_spec, qfh_result)
-
-    bd.export_step(antenna, "qfh_antenna.step")
-    print("Wrote qfh_antenna.step")
-
-    show(antenna)
+    main()
