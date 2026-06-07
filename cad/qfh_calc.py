@@ -180,7 +180,8 @@ class QfhInputSpec:
     ----------
     frequency_hz: Design frequency (Hz).
     wire_diameter: Conductor outer diameter (mm).
-    wire_bending_radius: Center of bend to conductor center (mm).
+    wire_bending_radius: Center of bend to conductor center (mm). For copper,
+        bending_radius = (d/2) / (0.45) = d / 0.9.
     ratio: Diameter-to-height ratio (0.44 typical; 0.3-0.4 for better
                horizon coverage).
     turns: Helix twist in fractions of a full turn (0.5 = 180°).
@@ -198,6 +199,11 @@ class QfhInputSpec:
     turns: float = 0.5  # Number of turns (0.25 / 0.5 / 0.75 / 1.0)
     # Loop circumference in wavelengths (normally 1):
     num_wavelengths: float = 1.0
+
+    def __post_init__(self) -> None:
+        """Validate."""
+        # Bending radius must be at least a tiny bit larger than diameter.
+        assert self.wire_bending_radius > self.wire_diameter
 
     def to_pretty_str(self, prefix: str = "") -> str:
         """Return a human-readable strrepresentation of the input parameters.
@@ -364,7 +370,7 @@ if __name__ == "__main__":
     input_spec = QfhInputSpec(
         frequency_hz=436e6,
         wire_diameter=1.5,
-        wire_bending_radius=1.5,
+        wire_bending_radius=2.0,
         # Extremely-default settings:
         ratio=0.44,
         turns=0.5,

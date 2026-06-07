@@ -225,7 +225,7 @@ def main() -> None:
     input_spec_913e6 = QfhInputSpec(
         frequency_hz=913.0e6,
         wire_diameter=1.5,  # conductor outer diameter (mm)
-        wire_bending_radius=1.5,  # bending radius (mm)
+        wire_bending_radius=3.0,  # bending radius (mm)
         ratio=0.44,  # width / height ratio
         turns=0.5,  # half-turn helix
         num_wavelengths=1.0,  # one wavelength per loop
@@ -241,7 +241,7 @@ def main() -> None:
                 qfh_input_spec=QfhInputSpec(
                     frequency_hz=436.0e6,
                     wire_diameter=1.5,
-                    wire_bending_radius=1.5,
+                    wire_bending_radius=3.0,
                 )
             )
         ),
