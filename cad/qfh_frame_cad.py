@@ -5,6 +5,7 @@ import build123d as bd
 from build123d_ease import show
 from loguru import logger
 
+from cad.qfh_antenna_wire_cad import build_qfh_antenna
 from cad.qfh_calc import QfhInputSpec, QfhResult, calculate_qfh
 
 
@@ -75,25 +76,44 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Compound:
     """Create the QFH antenna support structure."""
     p = bd.Part(None)
 
-    # Small loop channels (X axis at bottom, just above XY plane).
+    # Small loop channels.
     p += _draw_loop_wire_channel(
         loop_diameter=spec.qfh.small_loop.rad,
         loop_height=spec.qfh.small_loop.height,
         wire_diameter=spec.wire_diameter,
         channel_thickness_on_sides=spec.channel_thickness_on_sides,
         turns=spec.qfh.input_spec.turns,
-    ).translate(
-        (0, 0, spec.qfh.large_loop.height - spec.qfh.small_loop.height)
-    )
+    ).rotate(bd.Axis.Z, 90)
+    # .translate((0, 0, spec.qfh.large_loop.height-spec.qfh.small_loop.height))
 
-    # Large loop channels (X axis at bottom, right at XY plane).
+    # Large loop channels.
     p += _draw_loop_wire_channel(
         loop_diameter=spec.qfh.large_loop.rad,
         loop_height=spec.qfh.large_loop.height,
         wire_diameter=spec.wire_diameter,
         channel_thickness_on_sides=spec.channel_thickness_on_sides,
         turns=spec.qfh.input_spec.turns,
-    ).rotate(bd.Axis.Z, 90)
+    )
+
+    alignment_spin_deg_small = spec.qfh.small_loop.frame_alignment_spin_deg(
+        turns=spec.qfh.input_spec.turns,
+        wire_bending_radius=spec.qfh.input_spec.wire_bending_radius,
+    )
+    alignment_spin_deg_large = spec.qfh.large_loop.frame_alignment_spin_deg(
+        turns=spec.qfh.input_spec.turns,
+        wire_bending_radius=spec.qfh.input_spec.wire_bending_radius,
+    )
+    # Surprisingly, the angles are slightly different for the center connector.
+    alignment_spin_deg_avg = (
+        alignment_spin_deg_small + alignment_spin_deg_large
+    ) / 2
+
+    antenna_wire = build_qfh_antenna(
+        qfh_input_spec=spec.qfh.input_spec,
+        qfh_result=spec.qfh,
+    ).rotate(axis=bd.Axis.Z, angle=alignment_spin_deg_avg)
+
+    p -= antenna_wire
 
     return p
 

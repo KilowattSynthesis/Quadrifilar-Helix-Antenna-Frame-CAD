@@ -354,6 +354,22 @@ class LoopResult:
     rad: float  # Horizontal separator D (mm)
     rad_comp: float  # Compensated horizontal separator Dc (mm)
 
+    def frame_alignment_spin_deg(
+        self, turns: float, wire_bending_radius: float
+    ) -> float:
+        """Angle offset (degrees) between the frame channel and the wire helix.
+
+        The helix is trimmed by z0 = rho * tz at each end to make room for
+        corner bends, so it starts at z0 rather than z=0.  The frame channel
+        (extrude_linear_with_rotation) starts rotating immediately from z=0,
+        giving it a phase lead of this many degrees over the helix at z=z0.
+        """
+        pitch = self.height / turns
+        circumferential = math.pi * self.rad  # 2π * (rad/2)
+        tz = pitch / math.sqrt(pitch**2 + circumferential**2)
+        z0 = wire_bending_radius * tz
+        return 360 * turns * z0 / self.height
+
 
 @dataclass
 class QfhResult:
