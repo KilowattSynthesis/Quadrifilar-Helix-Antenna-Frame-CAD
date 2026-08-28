@@ -5,6 +5,6 @@
         "charliermarsh.ruff",
         "mtsmfm.vscode-stl-viewer",
         "ms-python.python",
-        "gruntfuggly.todo-tree"
+        "fanaticpythoner.better-todo-tree",
     ]
 }

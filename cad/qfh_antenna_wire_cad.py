@@ -45,6 +45,7 @@ centreline length comes out within ~0.1 % of ``LoopResult.total_comp``.
 Made with Claude Opus.
 """
 
+import math
 from pathlib import Path
 
 import build123d as bd
