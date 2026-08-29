@@ -363,12 +363,25 @@ class LoopResult:
         corner bends, so it starts at z0 rather than z=0.  The frame channel
         (extrude_linear_with_rotation) starts rotating immediately from z=0,
         giving it a phase lead of this many degrees over the helix at z=z0.
+
+        The helix's angular *sweep* is also trimmed short by ``eps_deg`` at
+        each end (see ``loop_centerline`` in qfh_antenna_wire_cad.py) so its
+        corner bends land square on the global X/Y axes -- that shifts the
+        helix's own start point forward by ``eps_deg`` before this phase-lead
+        rotation is even applied, so it is subtracted back out here.
         """
         pitch = self.height / turns
         circumferential = math.pi * self.rad  # 2π * (rad/2)
         tz = pitch / math.sqrt(pitch**2 + circumferential**2)
         z0 = wire_bending_radius * tz
-        return 360 * turns * z0 / self.height
+
+        radius = self.rad / 2.0
+        cos_alpha = math.sqrt(max(0.0, 1.0 - tz**2))
+        eps_deg = math.degrees(
+            wire_bending_radius * cos_alpha / (radius - wire_bending_radius)
+        )
+
+        return 360 * turns * z0 / self.height - eps_deg
 
 
 @dataclass

@@ -95,23 +95,10 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Compound:
         turns=spec.qfh.input_spec.turns,
     )
 
-    alignment_spin_deg_small = spec.qfh.small_loop.frame_alignment_spin_deg(
-        turns=spec.qfh.input_spec.turns,
-        wire_bending_radius=spec.qfh.input_spec.wire_bending_radius,
-    )
-    alignment_spin_deg_large = spec.qfh.large_loop.frame_alignment_spin_deg(
-        turns=spec.qfh.input_spec.turns,
-        wire_bending_radius=spec.qfh.input_spec.wire_bending_radius,
-    )
-    # Surprisingly, the angles are slightly different for the center connector.
-    alignment_spin_deg_avg = (
-        alignment_spin_deg_small + alignment_spin_deg_large
-    ) / 2
-
     antenna_wire = build_qfh_antenna(
         qfh_input_spec=spec.qfh.input_spec,
         qfh_result=spec.qfh,
-    ).rotate(axis=bd.Axis.Z, angle=alignment_spin_deg_avg)
+    )
 
     p -= antenna_wire
 

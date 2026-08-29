@@ -35,18 +35,20 @@ A single circular arc of a fixed radius cannot be exactly tangent to BOTH the
 straight bar AND the *curving* helix at its on-cylinder base point: the helix
 leaves its own tangent line immediately, so the three constraints
 (radius = rho, tangent to bar, tangent to helix-at-base) over-determine the
-arc.  Forcing the bar-side endpoint exactly onto the diametric radial line
-(so the finished bar is square to the global X/Y axes, not "over-spun" past
-it) makes a *circular* arc worse, not better: with a fixed radius and the
-helix-side tangent pinned, the arc has no freedom left to reach that
-endpoint without first bulging past it and doubling back -- a visible
-S-kink at both corners instead of a small skew at one.  This model instead
-uses a tangent-constrained :class:`Spline` for each corner: tangent to the
-helix at one end, radial (bar-aligned) at the other.  The spline's extra
-degrees of freedom let it bank smoothly between the two without doubling
-back, at the cost of the bend radius no longer being held exactly at
-``wire_bending_radius``.  As a check, the resulting centreline length comes
-out within ~0.5 % of ``LoopResult.total_comp``.
+arc.  This model resolves it by honouring the tangency that matters
+electromechanically -- a smooth, true-radius entry into the radiating helix --
+using :class:`TangentArc`, unmodified.  Left alone, that arc's bar-side
+endpoint lands a few degrees past the helix endpoint's azimuth ("over-spun"
+past square to the global X/Y axes), because it steps off along the helix's
+*own* tangent, which has an azimuthal component.  Rather than bending the
+corner geometry to force the endpoint back on axis -- which either kinks the
+straight-bar joint or (with a Spline) lets the curve wander close enough to
+the rest of the loop to self-intersect the swept tube -- ``loop_centerline``
+trims the raw helix's angular *sweep* short by that same swing at each end
+(mirroring the existing vertical z0 trim), so the untouched, still
+exactly-``rho``, still tangent-continuous corner arc lands the bar squarely
+on its own.  As a check, the resulting centreline length comes out within
+~0.1 % of ``LoopResult.total_comp``.
 
 Made with Claude Opus.
 """
@@ -73,22 +75,16 @@ def _bar_corner_point(
 ) -> bd.Vector:
     """Point where a corner bend hands off to a straight bar.
 
-    Starting from a helix endpoint and stepping one bend-radius ``rho``
-    *vertically* (up at the top, down at the bottom, using only the vertical
-    component of the helix tangent) and one bend-radius radially inward gives
-    the bar-side tangent point.  ``vertical_sign`` is -1 at a helix *base*
-    (bend dives down to the bar) and +1 at a helix *top* (bend rises over to
-    the bar).
-
-    Deliberately dropping the tangent's azimuthal (in-plane / tangential)
-    component here -- keeping it would rotate the bar corner past the
-    helix endpoint's azimuth, leaving the finished bar "over-spun" just past
-    square to the global X/Y axes instead of running exactly along the
-    diametric radial line.
+    Starting from a helix endpoint and stepping one bend-radius ``rho`` along
+    the helix tangent (up at the top, down at the bottom) and one bend-radius
+    radially inward gives the tangent point of a true 90 deg / radius-``rho``
+    arc.  ``vertical_sign`` is -1 at a helix *base* (bend dives down to the
+    bar) and +1 at a helix *top* (bend rises over to the bar).
     """
     radial_out = bd.Vector(helix_end.X, helix_end.Y, 0).normalized()
-    vertical_step = bd.Vector(0, 0, helix_tangent.Z * vertical_sign * rho)
-    return helix_end + vertical_step + radial_out * (-rho)
+    return (
+        helix_end + helix_tangent * (vertical_sign * rho) + radial_out * (-rho)
+    )
 
 
 def loop_centerline(
@@ -116,9 +112,25 @@ def loop_centerline(
     helix_h = height - 2.0 * rho * tz
     z0 = rho * tz
 
-    side_a = bd.Helix(
-        pitch=helix_h / turns, height=helix_h, radius=radius
-    ).translate((0, 0, z0))
+    # Trim the helix's angular sweep too, symmetrically, by the azimuthal
+    # reach of the two end bends -- same idea as the height trim above, just
+    # in the angular direction.  Left untrimmed, the *unmodified* corner-bend
+    # formula in ``_bar_corner_point`` (a true tangent, radius-rho arc; see
+    # module docstring) lands the bar-side point a few degrees past the
+    # helix endpoint's azimuth, "over-spinning" the finished bar past square
+    # to the global X/Y axes.  Starting (and ending) the raw helix a little
+    # short compensates for exactly that swing, so the bar comes out square
+    # without touching the bend geometry itself -- the corner keeps its true
+    # ``rho`` bending radius and stays tangent-continuous into the helix.
+    cos_alpha = math.sqrt(max(0.0, 1.0 - tz**2))  # horizontal tangent fraction
+    eps_deg = math.degrees(rho * cos_alpha / (radius - rho))
+    turns_used = turns - 2.0 * eps_deg / 360.0
+
+    side_a = (
+        bd.Helix(pitch=helix_h / turns_used, height=helix_h, radius=radius)
+        .rotate(bd.Axis.Z, eps_deg)
+        .translate((0, 0, z0))
+    )
     side_b = side_a.rotate(bd.Axis.Z, 180)  # the two arms are 180 deg apart
 
     # Endpoints (@) and unit tangents (%) straight from the helix geometry.
@@ -133,32 +145,11 @@ def loop_centerline(
     sb0 = _bar_corner_point(b0, tb0, -1, rho)
     sb1 = _bar_corner_point(b1, tb1, +1, rho)
 
-    # Corner bends: tangent to the helix at one end and radial (bar-aligned)
-    # at the other.  A single circular arc can't hit both exactly (see
-    # module docstring), so a tangent-constrained Spline is used instead --
-    # it banks smoothly between the two tangents without the S-shaped
-    # doubling-back a TangentArc forced through an on-axis bar point would
-    # otherwise produce.
-    def _bend(
-        helix_end: bd.Vector,
-        helix_tangent: bd.Vector,
-        bar_point: bd.Vector,
-        vertical_sign: int,
-    ) -> bd.Edge:
-        radial_out = bd.Vector(helix_end.X, helix_end.Y, 0).normalized()
-        return bd.Spline(
-            helix_end,
-            bar_point,
-            tangents=(
-                helix_tangent * vertical_sign,
-                radial_out * (-vertical_sign),
-            ),
-        )
-
-    bend_a0 = _bend(a0, ta0, sa0, -1)
-    bend_a1 = _bend(a1, ta1, sa1, +1)
-    bend_b0 = _bend(b0, tb0, sb0, -1)
-    bend_b1 = _bend(b1, tb1, sb1, +1)
+    # Corner bends: true radius-rho arcs, tangent to the helix at its endpoint.
+    bend_a0 = bd.TangentArc(a0, sa0, tangent=ta0 * -1)
+    bend_a1 = bd.TangentArc(a1, sa1, tangent=ta1 * +1)
+    bend_b0 = bd.TangentArc(b0, sb0, tangent=tb0 * -1)
+    bend_b1 = bd.TangentArc(b1, sb1, tangent=tb1 * +1)
 
     bottom_bar = bd.Line(sb0, sa0)
     top_bar = bd.Line(sa1, sb1)
