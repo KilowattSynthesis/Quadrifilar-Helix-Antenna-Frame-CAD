@@ -7,15 +7,19 @@ long, extruded from z=0 to the loop height while rotating ``turns``
 revolutions.  Its section is thin (``blade_core_thickness``) for most of its
 length and flares out over the last ``tape_land_flare_length`` at each end to
 the full ``tape_land_width``, so the material goes where the tape needs it.
-The two blades cross at 90 deg and fuse into one printable frame.
+The flare only widens the blade radially, so the top and bottom
+``tape_pad_thickness`` of every blade is a full-width land instead, giving the
+tape something to sit on where it turns inboard.  The two blades cross at 90
+deg and fuse into one printable frame.
 
 The conductor is **self-adhesive foil tape stuck to the outside of the
 frame** -- no wire channels, no threading.  For one loop, the tape path is::
 
-    PCB pad -> underside of the bottom bar -> around the bottom corner
+    PCB pad -> wire through the feed-through -> underside of the bottom bar
+            -> around the bottom corner
             -> up the outer end face (helical, 180 deg) -> over the top face
             -> down the opposite end face -> underside of the other bottom bar
-            -> PCB pad
+            -> feed-through -> PCB pad
 
 The blade's end faces sit at exactly +/-``rad``/2, so the tape centreline lands
 on the design radius of the RF geometry (``LoopResult.rad`` is the
@@ -40,10 +44,11 @@ At the bottom the frame carries a hub that does two jobs:
   QFHBAL01 board (https://github.com/ODZ-UJF-AV-CR/QFHBAL01), which has three
   holes plus an RF connector in the fourth quadrant, so one boss goes unused
   and the board can be fitted in any rotation.  The PCB hangs
-  under the hub inside the sleeve bore.  The sleeve wall rises to z=0,
-  across the path the tape takes inboard, so a **pass-through window** at
-  each of the four bars lets the tape cross into the housing and drop onto
-  the board's pads.  The board also sets how far the pipe can be pushed in.
+  under the hub inside the sleeve bore, which the sleeve wall closes off
+  from the tape runs outside it.  Each of the four bars gets one 1.5 mm
+  **wire feed-through**: the tape ends outside and a short copper wire runs
+  through to the board's pad, which is far easier to weatherproof than an
+  open slot.  The board also sets how far the pipe can be pushed in.
 
 Made with Claude Opus.
 """
@@ -90,6 +95,13 @@ class PartSpec:
     blade_core_thickness: float = 5.0
     # Length, at each end, over which the core flares out to the tape land.
     tape_land_flare_length: float = 10.0
+    # The flare only widens the blade radially, so the flat top and bottom
+    # faces would be left at core width, and tape turning inboard across them
+    # would overhang.  These pads take the top and bottom of each blade out to
+    # the full tape land width, across the whole blade: a
+    # tape_land_width x rad x tape_pad_thickness slab at each end.  They
+    # occupy the blade's own last few mm, so the loop height is unchanged.
+    tape_pad_thickness: float = 3.0
 
     # --- Zip-tie holes -----------------------------------------------------
     tie_hole_diameter: float = 3.2  # Fits a standard 2.5 x 1.0 mm zip tie.
@@ -116,13 +128,16 @@ class PartSpec:
     # The window is shortened if it would leave less than this.
     top_tape_gap_min_bridge: float = 3.0
 
-    # --- Bottom tape pass-through into the PCB housing --------------------
-    # The mast sleeve's wall rises to z=0, right across the path the tape
-    # takes inboard along the blade's underside.  Cut a window through it at
-    # each bar, its roof flush with that underside, so the tape can pass into
-    # the PCB housing (the sleeve bore) and drop onto the board's pads.
-    pcb_tape_slot_width: float = 20.0
-    pcb_tape_slot_height: float = 10.0
+    # --- Feed-throughs into the PCB housing -------------------------------
+    # The mast sleeve's wall closes the PCB housing off from the tape runs
+    # outside it.  Rather than open it up with a window, each bar gets one
+    # small radial hole: the tape ends outside, and a short copper wire
+    # passes through to the board's pad.  A 1.5 mm hole is far easier to seal
+    # than an open slot, which is the point.
+    pcb_wire_hole_diameter: float = 1.5
+    # Depth of the hole's axis below the frame underside.  Sits between that
+    # underside and the board, so the wire has a straight run to the pad.
+    pcb_wire_hole_z: float = 3.0
 
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
@@ -192,6 +207,14 @@ class PartSpec:
             msg = "Zip-tie holes are too close to the blade's end face."
             raise ValueError(msg)
 
+        if self.tape_pad_thickness >= self.tie_hole_bar_z:
+            msg = (
+                f"Tape pads ({self.tape_pad_thickness:.1f} mm) reach the bar "
+                f"zip-tie holes at z={self.tie_hole_bar_z:.1f} mm, so a tie "
+                f"could not wrap around them."
+            )
+            raise ValueError(msg)
+
     def _validate_hub(self) -> None:
         # Leave the blade ends (the tape lands) clear of the hub.
         if self.hub_radius > self.min_half_length - self.hub_edge_margin:
@@ -202,12 +225,12 @@ class PartSpec:
             )
             raise ValueError(msg)
 
-        if self.top_tape_gap_headroom <= self.top_tape_gap_min_bridge:
+        if self.top_tape_gap_headroom <= self.top_tape_gap_bridge:
             msg = (
                 f"The two loops' tops are only "
                 f"{self.top_tape_gap_headroom:.1f} mm apart -- no room for a "
                 f"tape crossover gap that still leaves a "
-                f"{self.top_tape_gap_min_bridge:.1f} mm bridge above it."
+                f"{self.top_tape_gap_bridge:.1f} mm bridge above it."
             )
             raise ValueError(msg)
 
@@ -231,24 +254,22 @@ class PartSpec:
 
     def _validate_tape_path(self) -> None:
         if self.mast_pipe_od is None:
-            return  # No sleeve wall in the tape's way.
+            return  # No sleeve wall between the tape and the board.
 
-        if self.pcb_tape_slot_height < self.pcb_standoff_height:
+        if self.pcb_wire_hole_z < self.pcb_wire_hole_diameter:
             msg = (
-                f"Tape pass-through ({self.pcb_tape_slot_height:.1f} mm) "
-                f"is shallower than the PCB standoff "
-                f"({self.pcb_standoff_height:.1f} mm), so the tape could "
-                f"not reach the board."
+                f"Feed-through at z=-{self.pcb_wire_hole_z:.1f} mm is too "
+                f"close to the frame underside to leave material above a "
+                f"{self.pcb_wire_hole_diameter:.1f} mm hole."
             )
             raise ValueError(msg)
 
-        circumference = 2.0 * math.pi * self.sleeve_mid_radius
-        slot_arc = len(BAR_ANGLES_DEG) * self.pcb_tape_slot_width
-        if slot_arc > 0.7 * circumference:
+        if self.pcb_wire_hole_z >= self.pcb_standoff_height:
             msg = (
-                f"Tape pass-throughs would remove {slot_arc:.0f} mm of "
-                f"the sleeve's {circumference:.0f} mm circumference, "
-                f"leaving too little wall between them."
+                f"Feed-through at z=-{self.pcb_wire_hole_z:.1f} mm is at or "
+                f"below the board itself "
+                f"(z=-{self.pcb_standoff_height:.1f} mm); it must come "
+                f"through above the board."
             )
             raise ValueError(msg)
 
@@ -274,11 +295,20 @@ class PartSpec:
         return abs(self.qfh.large_loop.height - self.qfh.small_loop.height)
 
     @property
+    def top_tape_gap_bridge(self) -> float:
+        """Material kept above the crossover window.
+
+        Never less than the tape pad, so the window's roof is the pad's
+        underside and the bridge is the full-width pad rather than thin core.
+        """
+        return max(self.top_tape_gap_min_bridge, self.tape_pad_thickness)
+
+    @property
     def top_tape_gap_height_used(self) -> float:
         """Gap height actually cut, shortened to keep a top bridge."""
         return min(
             self.top_tape_gap_height,
-            self.top_tape_gap_headroom - self.top_tape_gap_min_bridge,
+            self.top_tape_gap_headroom - self.top_tape_gap_bridge,
         )
 
     @property
@@ -356,11 +386,38 @@ def _blade_section(*, loop_diameter: float, spec: PartSpec) -> bd.Face:
     return section
 
 
+def _twisted_segment(
+    *,
+    section: bd.Face,
+    loop_height: float,
+    turns: float,
+    z_start: float,
+    z_end: float,
+) -> bd.Solid:
+    """Extrude one section over a z range, following the blade's twist.
+
+    The segment starts at whatever angle the blade has reached at ``z_start``
+    and twists at the blade's own rate, so segments stack up into a single
+    continuous blade.
+    """
+    height = z_end - z_start
+    segment = bd.Solid.extrude_linear_with_rotation(
+        section=section,
+        center=(0, 0),
+        normal=(0, 0, height),
+        angle=(360.0 * turns * height / loop_height),
+    )
+    return segment.rotate(
+        bd.Axis.Z, 360.0 * turns * z_start / loop_height
+    ).translate((0, 0, z_start))
+
+
 def _draw_twisted_blade(
     *,
     loop_diameter: float,
     loop_height: float,
     spec: PartSpec,
+    crossover_z: float | None = None,
 ) -> bd.Part | bd.Compound:
     """One loop's twisted blade, with its zip-tie holes.
 
@@ -369,16 +426,49 @@ def _draw_twisted_blade(
     """
     turns = spec.qfh.input_spec.turns
     half_len = loop_diameter / 2.0
+    pad_t = spec.tape_pad_thickness
 
-    section = _blade_section(loop_diameter=loop_diameter, spec=spec)
+    # The blade is a stack of three twisted segments rather than one solid
+    # with pads laid over it: the flared core in the middle, and a full-width
+    # tape land at each end.  Stacking them keeps every joint a plain
+    # face-to-face union -- overlapping a pad onto the core instead makes
+    # their end faces touch tangentially, which is what turns the boolean
+    # degenerate.
+    pad_section = bd.Rectangle(loop_diameter, spec.tape_land_width).face()
+    assert pad_section is not None
+    core_section = _blade_section(loop_diameter=loop_diameter, spec=spec)
+    core_top = loop_height - pad_t
+
+    def segment(section: bd.Face, z_start: float, z_end: float) -> bd.Solid:
+        return _twisted_segment(
+            section=section,
+            loop_height=loop_height,
+            turns=turns,
+            z_start=z_start,
+            z_end=z_end,
+        )
+
+    core = bd.Part(None) + segment(core_section, pad_t, core_top)
+
+    # Window for the other loop's tape.  Cut it from the bare core, letting
+    # the cutter overshoot the core's top face rather than stopping flush
+    # with it, so the top land can then close the window off as its roof
+    # without the two ever sharing a coincident cut face.
+    if crossover_z is not None:
+        z_top = crossover_z + spec.top_tape_gap_height_used
+        core -= _top_tape_gap(
+            spec=spec,
+            blade_height=loop_height,
+            z_bottom=crossover_z,
+            z_top=(
+                core_top + pad_t if z_top >= core_top - 1e-6 else z_top
+            ),
+        )
 
     p = bd.Part(None)
-    p += bd.Solid.extrude_linear_with_rotation(
-        section=section,
-        center=(0, 0),
-        normal=(0, 0, loop_height),  # Distance.
-        angle=(360 * turns),
-    )
+    p += segment(pad_section, 0.0, pad_t)
+    p += core
+    p += segment(pad_section, core_top, loop_height)
 
     # Twist is CCW with height: the blade at height z lies along this angle.
     def blade_angle_deg(z: float) -> float:
@@ -429,7 +519,7 @@ def _draw_twisted_blade(
 
 
 def _top_tape_gap(
-    *, spec: PartSpec, blade_height: float, z_bottom: float
+    *, spec: PartSpec, blade_height: float, z_bottom: float, z_top: float
 ) -> bd.Part:
     """Window through the taller blade for the shorter loop's top tape.
 
@@ -437,8 +527,7 @@ def _top_tape_gap(
     blade, at ``z_bottom``; the taller blade stands right in the way.  The
     window sits directly on that face so the tape runs straight through it.
     """
-    height = spec.top_tape_gap_height_used
-    z_mid = z_bottom + height / 2.0
+    z_mid = (z_bottom + z_top) / 2.0
 
     # Follow the taller blade's twist at the window's mid-height.
     angle_deg = 360.0 * spec.qfh.input_spec.turns * z_mid / blade_height
@@ -447,7 +536,7 @@ def _top_tape_gap(
         bd.Box(
             length=spec.top_tape_gap_width,
             width=spec.tape_land_width * 3.0,  # Punch clean through.
-            height=height,
+            height=z_top - z_bottom,
         )
         .rotate(bd.Axis.Z, angle_deg)
         .translate((0.0, 0.0, z_mid))
@@ -505,20 +594,17 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                 .translate((*_polar(r_mid, ang), z_screw))
             )
 
-        # Pass-throughs so each tape run can cross the sleeve wall at z=0
-        # and enter the PCB housing.  Roof flush with the blade underside,
-        # which is the plane the tape runs along.
+        # One small feed-through per bar: the tape stops outside the
+        # sleeve and a short copper wire runs through to the board's pad.
         for ang in BAR_ANGLES_DEG:
             p -= (
-                bd.Box(
-                    length=spec.mast_sleeve_wall * 3.0,
-                    width=spec.pcb_tape_slot_width,
-                    height=spec.pcb_tape_slot_height,
+                bd.Cylinder(
+                    radius=spec.pcb_wire_hole_diameter / 2.0,
+                    height=spec.mast_sleeve_wall * 3.0,
+                    rotation=(0, 90, 0),  # Axis along X, radial once rotated.
                 )
                 .rotate(bd.Axis.Z, ang)
-                .translate(
-                    (*_polar(r_mid, ang), -spec.pcb_tape_slot_height / 2.0)
-                )
+                .translate((*_polar(r_mid, ang), -spec.pcb_wire_hole_z))
             )
 
     # PCB standoff bosses, hanging below the hub underside, inside the bore.
@@ -549,11 +635,16 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
     large_h = spec.qfh.large_loop.height
     small_h = spec.qfh.small_loop.height
 
+    # The taller blade blocks the shorter loop's tape where it crosses the
+    # axis along its top face, so it gets a window at the shorter one's top.
+    large_is_taller = large_h >= small_h
+
     # Large loop blade: bottom bar along +/-X.
     large_blade = _draw_twisted_blade(
         loop_diameter=spec.qfh.large_loop.rad,
         loop_height=large_h,
         spec=spec,
+        crossover_z=small_h if large_is_taller else None,
     )
 
     # Small loop blade: a quarter turn around, bottom bar along +/-Y.
@@ -561,20 +652,8 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
         loop_diameter=spec.qfh.small_loop.rad,
         loop_height=small_h,
         spec=spec,
+        crossover_z=None if large_is_taller else large_h,
     ).rotate(bd.Axis.Z, 90)
-
-    # The taller blade blocks the shorter loop's tape where it crosses the
-    # axis along its top face, so cut a window through it there.  Cut before
-    # fusing: the two blades touch at the axis, and only the taller one
-    # should lose material.
-    if large_h >= small_h:
-        large_blade -= _top_tape_gap(
-            spec=spec, blade_height=large_h, z_bottom=small_h
-        )
-    else:
-        small_blade -= _top_tape_gap(
-            spec=spec, blade_height=small_h, z_bottom=large_h
-        )
 
     used = spec.top_tape_gap_height_used
     if used < spec.top_tape_gap_height:
@@ -584,7 +663,7 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
             used,
             spec.top_tape_gap_height,
             spec.top_tape_gap_headroom,
-            spec.top_tape_gap_min_bridge,
+            spec.top_tape_gap_bridge,
         )
 
     p = bd.Part(None)

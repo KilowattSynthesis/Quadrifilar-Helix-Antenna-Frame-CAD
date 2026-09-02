@@ -16,14 +16,14 @@ deg and printed as a single part.
 Each blade's section is a thin 5 mm core that flares out over the last 10 mm
 at each end to a full 10 mm, so the tape gets a wide land to stick to without
 paying for that thickness along the whole blade -- about 45% less section area
-than a plain 10 mm slab.
+than a plain 10 mm slab. The flare only widens the blade radially, so the top
+and bottom 3 mm of every blade is a full-width land across its whole length,
+giving the tape a 10 mm surface where it turns inboard.
 
 * **The conductor is foil tape**, stuck to the flat outer end faces of the
   blades. There are no wire channels to thread. Each blade end face sits
   exactly on the RF design radius, so the tape centreline lands where the
-  solver says the conductor should be. Note that the flat top and bottom
-  faces, where the tape turns inboard, are only as wide as the core, so tape
-  running along them overhangs a little.
+  solver says the conductor should be.
 * **Zip-tie holes** run through each blade near its ends and near the top and
   bottom bars. A tie goes through a hole, wraps around the nearby edge *over
   the tape*, and cinches -- mechanical backup for the adhesive.
@@ -42,17 +42,19 @@ than a plain 10 mm slab.
   unused -- it just backs up the connector side, and lets the board be fitted
   in any of the four rotations. The board hangs under the hub inside the
   sleeve bore, and doubles as the mast pipe's insertion depth stop.
-* **Bottom tape pass-throughs**: the sleeve wall rises to the plane the tape
-  runs along, so a 20 x 10 mm window at each of the four bars lets the tape
-  cross the wall into the PCB housing and drop onto the pads.
+* **Wire feed-throughs**: the sleeve wall closes the PCB housing off from
+  the tape runs outside it, so each of the four bars gets a single 1.5 mm
+  hole. The tape ends outside and a short copper wire passes through to the
+  board's pad -- much easier to weatherproof than an open slot.
 
 Tape path, per loop:
 
 ```text
-PCB pad -> underside of the bottom bar -> around the bottom corner
+PCB pad -> wire through the feed-through -> underside of the bottom bar
+        -> around the bottom corner
         -> up the outer end face (helical, 180 deg) -> over the top face
         -> down the opposite end face -> underside of the other bottom bar
-        -> PCB pad
+        -> feed-through -> PCB pad
 ```
 
 ### Assembly
@@ -63,12 +65,12 @@ PCB pad -> underside of the bottom bar -> around the bottom corner
 3. Pass the shorter loop's top tape through the crossover window in the
    taller blade.
 4. Thread a zip tie through each hole, over the tape, and cinch.
-5. Take each tape end inboard along the bar's underside and through the
-   pass-through window into the PCB housing.
+5. End each tape run outside the sleeve and solder a short copper wire to
+   it, passed through that bar's 1.5 mm feed-through into the PCB housing.
 6. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
    into the bosses; the fourth boss has no matching hole and stays empty.
-   Solder the tape ends to the pads.
+   Solder the four wires to the pads.
 7. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
