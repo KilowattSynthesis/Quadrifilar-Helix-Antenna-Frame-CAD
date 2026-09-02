@@ -157,9 +157,7 @@ class PartSpec:
     @property
     def pcb_boss_outer_radius(self) -> float:
         """Radius reached by the outside of the PCB mounting bosses."""
-        return (
-            self.pcb_screw_circle_diameter + self.pcb_boss_diameter
-        ) / 2.0
+        return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
 
     @property
     def hub_radius(self) -> float:
@@ -194,9 +192,8 @@ def _tie_hole(
     cyl = bd.Cylinder(
         radius=diameter / 2.0, height=length, rotation=(90, 0, 0)
     )
-    return (
-        cyl.rotate(bd.Axis.Z, angle_deg)
-        .translate((*_polar(radius, angle_deg), z))
+    return cyl.rotate(bd.Axis.Z, angle_deg).translate(
+        (*_polar(radius, angle_deg), z)
     )
 
 
@@ -397,7 +394,7 @@ def main() -> None:
         ),
         # 913 MHz: only ~46 mm across -- narrower than a 1.5 in pipe -- so
         # there is no mast sleeve; it just carries the balun PCB.
-        "QFH_Antenna_913_MHz": show(
+        "QFH_Antenna_913_MHz": (
             qfh_antenna_frame(
                 PartSpec(
                     qfh=calculate_qfh(
