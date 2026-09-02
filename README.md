@@ -35,6 +35,9 @@ deg and printed as a single part.
   unused -- it just backs up the connector side, and lets the board be fitted
   in any of the four rotations. The board hangs under the hub inside the
   sleeve bore, and doubles as the mast pipe's insertion depth stop.
+* **Bottom tape pass-throughs**: the sleeve wall rises to the plane the tape
+  runs along, so a 20 x 10 mm window at each of the four bars lets the tape
+  cross the wall into the PCB housing and drop onto the pads.
 
 Tape path, per loop:
 
@@ -53,10 +56,13 @@ PCB pad -> underside of the bottom bar -> around the bottom corner
 3. Pass the shorter loop's top tape through the crossover window in the
    taller blade.
 4. Thread a zip tie through each hole, over the tape, and cinch.
-5. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
+5. Take each tape end inboard along the bar's underside and through the
+   pass-through window into the PCB housing.
+6. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
-   into the bosses; the fourth boss has no matching hole and stays empty. Solder the tape ends to the pads.
-6. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
+   into the bosses; the fourth boss has no matching hole and stays empty.
+   Solder the tape ends to the pads.
+7. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
 Everything is parametric -- see `PartSpec` in `cad/qfh_frame_cad.py` for tape

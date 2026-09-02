@@ -38,9 +38,10 @@ At the bottom the frame carries a hub that does two jobs:
   QFHBAL01 board (https://github.com/ODZ-UJF-AV-CR/QFHBAL01), which has three
   holes plus an RF connector in the fourth quadrant, so one boss goes unused
   and the board can be fitted in any rotation.  The PCB hangs
-  under the hub inside the sleeve bore, on a flat underside that the four
-  tape ends run straight across to reach the board's pads.  The board also
-  sets how far the mast pipe can be pushed in.
+  under the hub inside the sleeve bore.  The sleeve wall rises to z=0,
+  across the path the tape takes inboard, so a **pass-through window** at
+  each of the four bars lets the tape cross into the housing and drop onto
+  the board's pads.  The board also sets how far the pipe can be pushed in.
 
 Made with Claude Opus.
 """
@@ -56,6 +57,11 @@ from loguru import logger
 from cad.qfh_calc import QfhInputSpec, QfhResult, calculate_qfh
 
 MM_PER_INCH = 25.4
+
+# Azimuths of the four bottom bars: the large loop's blade lies along +/-X at
+# z=0 and the small loop's, a quarter turn around, along +/-Y.  The four tape
+# runs head inboard along these.
+BAR_ANGLES_DEG = (0.0, 90.0, 180.0, 270.0)
 
 
 @dataclass
@@ -101,6 +107,14 @@ class PartSpec:
     # Material left above the window, at the very top of the taller blade.
     # The window is shortened if it would leave less than this.
     top_tape_gap_min_bridge: float = 3.0
+
+    # --- Bottom tape pass-through into the PCB housing --------------------
+    # The mast sleeve's wall rises to z=0, right across the path the tape
+    # takes inboard along the blade's underside.  Cut a window through it at
+    # each bar, its roof flush with that underside, so the tape can pass into
+    # the PCB housing (the sleeve bore) and drop onto the board's pads.
+    pcb_tape_slot_width: float = 20.0
+    pcb_tape_slot_height: float = 10.0
 
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
@@ -171,6 +185,26 @@ class PartSpec:
             msg = "Zip-tie holes are too close to the blade's end face."
             raise ValueError(msg)
 
+        if self.mast_pipe_od is not None:
+            if self.pcb_tape_slot_height < self.pcb_standoff_height:
+                msg = (
+                    f"Tape pass-through ({self.pcb_tape_slot_height:.1f} mm) "
+                    f"is shallower than the PCB standoff "
+                    f"({self.pcb_standoff_height:.1f} mm), so the tape could "
+                    f"not reach the board."
+                )
+                raise ValueError(msg)
+
+            circumference = 2.0 * math.pi * self.sleeve_mid_radius
+            slot_arc = len(BAR_ANGLES_DEG) * self.pcb_tape_slot_width
+            if slot_arc > 0.7 * circumference:
+                msg = (
+                    f"Tape pass-throughs would remove {slot_arc:.0f} mm of "
+                    f"the sleeve's {circumference:.0f} mm circumference, "
+                    f"leaving too little wall between them."
+                )
+                raise ValueError(msg)
+
         if self.top_tape_gap_headroom <= self.top_tape_gap_min_bridge:
             msg = (
                 f"The two loops' tops are only "
@@ -190,6 +224,11 @@ class PartSpec:
     def pcb_boss_outer_radius(self) -> float:
         """Radius reached by the outside of the PCB mounting bosses."""
         return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
+
+    @property
+    def sleeve_mid_radius(self) -> float:
+        """Mid-wall radius of the mast sleeve."""
+        return (self.mast_bore_radius + self.hub_radius) / 2.0
 
     @property
     def top_tape_gap_headroom(self) -> float:
@@ -365,7 +404,7 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
 
     if has_sleeve:
         bore_r = spec.mast_bore_radius
-        r_mid = (bore_r + outer_r) / 2.0
+        r_mid = spec.sleeve_mid_radius
 
         p += bd.Pos(Z=-spec.mast_sleeve_length / 2.0) * bd.Cylinder(
             radius=outer_r, height=spec.mast_sleeve_length
@@ -391,6 +430,22 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                 )
                 .rotate(bd.Axis.Z, ang)
                 .translate((*_polar(r_mid, ang), z_screw))
+            )
+
+        # Pass-throughs so each tape run can cross the sleeve wall at z=0
+        # and enter the PCB housing.  Roof flush with the blade underside,
+        # which is the plane the tape runs along.
+        for ang in BAR_ANGLES_DEG:
+            p -= (
+                bd.Box(
+                    length=spec.mast_sleeve_wall * 3.0,
+                    width=spec.pcb_tape_slot_width,
+                    height=spec.pcb_tape_slot_height,
+                )
+                .rotate(bd.Axis.Z, ang)
+                .translate(
+                    (*_polar(r_mid, ang), -spec.pcb_tape_slot_height / 2.0)
+                )
             )
 
     # PCB standoff bosses, hanging below the hub underside, inside the bore.
