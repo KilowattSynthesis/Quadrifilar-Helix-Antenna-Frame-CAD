@@ -34,8 +34,10 @@ At the bottom the frame carries a hub that does two jobs:
 
 * a **mast sleeve** that slips over a 1.5 in (38.1 mm) OD PVC pipe, with radial
   screw holes for fastening into the pipe, and
-* a **balun PCB mount** -- three M3 bosses on a 24 mm bolt circle matching the
-  QFHBAL01 board (https://github.com/ODZ-UJF-AV-CR/QFHBAL01).  The PCB hangs
+* a **balun PCB mount** -- four M3 bosses on a 24 mm bolt circle matching the
+  QFHBAL01 board (https://github.com/ODZ-UJF-AV-CR/QFHBAL01), which has three
+  holes plus an RF connector in the fourth quadrant, so one boss goes unused
+  and the board can be fitted in any rotation.  The PCB hangs
   under the hub inside the sleeve bore, on a flat underside that the four
   tape ends run straight across to reach the board's pads.  The board also
   sets how far the mast pipe can be pushed in.
@@ -123,8 +125,12 @@ class PartSpec:
     # the fourth quadrant taken by the RF connector.  The board is fitted
     # rotated 45 deg to the frame's bars so its X-shaped pads line up with the
     # four tape ends; that puts the bosses between the bars.
+    #
+    # A fourth boss is modelled at 315 deg for symmetry: the board has no hole
+    # there, so it goes unused and simply backs up the connector quadrant.  It
+    # also means the board can be fitted in any of the four rotations.
     pcb_screw_circle_diameter: float = 24.0
-    pcb_screw_angles_deg: tuple[float, ...] = (45.0, 135.0, 225.0)
+    pcb_screw_angles_deg: tuple[float, ...] = (45.0, 135.0, 225.0, 315.0)
     pcb_boss_diameter: float = 7.0
     pcb_standoff_height: float = 6.0  # Gap from frame underside to PCB.
     pcb_screw_hole_diameter: float = 2.7  # M3 thread-forming into plastic.

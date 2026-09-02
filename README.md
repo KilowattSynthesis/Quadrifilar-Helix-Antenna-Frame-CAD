@@ -29,10 +29,12 @@ deg and printed as a single part.
   Foil tape is thin, so a short window is still enough to pass it.
 * **Mast sleeve** at the bottom, bored for a 1.5 in (38.1 mm) OD PVC pipe,
   with radial screw holes for fastening into the pipe.
-* **Balun PCB mount**: three M3 bosses on a 24 mm bolt circle, matching the
-  [QFHBAL01](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) board. The board hangs
-  under the hub inside the sleeve bore, and doubles as the mast pipe's
-  insertion depth stop.
+* **Balun PCB mount**: four M3 bosses on a 24 mm bolt circle, matching the
+  [QFHBAL01](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) board. That board has
+  three holes and an RF connector in the fourth quadrant, so one boss goes
+  unused -- it just backs up the connector side, and lets the board be fitted
+  in any of the four rotations. The board hangs under the hub inside the
+  sleeve bore, and doubles as the mast pipe's insertion depth stop.
 
 Tape path, per loop:
 
@@ -53,7 +55,7 @@ PCB pad -> underside of the bottom bar -> around the bottom corner
 4. Thread a zip tie through each hole, over the tape, and cinch.
 5. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
-   into the bosses. Solder the tape ends to the pads.
+   into the bosses; the fourth boss has no matching hole and stays empty. Solder the tape ends to the pads.
 6. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
