@@ -43,9 +43,10 @@ giving the tape a 10 mm surface where it turns inboard.
   in any of the four rotations. The board hangs under the hub inside the
   sleeve bore, and doubles as the mast pipe's insertion depth stop.
 * **Wire feed-throughs**: the sleeve wall closes the PCB housing off from
-  the tape runs outside it, so each of the four bars gets a single 1.5 mm
-  hole. The tape ends outside and a short copper wire passes through to the
-  board's pad -- much easier to weatherproof than an open slot.
+  the tape runs outside it, so each of the four bars gets a single 2.5 mm
+  hole, its upper edge 1 mm below the surface the tape runs along. The tape
+  ends outside and a short copper wire passes through to the board's pad --
+  much easier to weatherproof than an open slot.
 
 Tape path, per loop:
 

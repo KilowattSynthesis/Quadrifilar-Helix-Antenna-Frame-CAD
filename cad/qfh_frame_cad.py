@@ -46,9 +46,10 @@ At the bottom the frame carries a hub that does two jobs:
   and the board can be fitted in any rotation.  The PCB hangs
   under the hub inside the sleeve bore, which the sleeve wall closes off
   from the tape runs outside it.  Each of the four bars gets one 1.5 mm
-  **wire feed-through**: the tape ends outside and a short copper wire runs
-  through to the board's pad, which is far easier to weatherproof than an
-  open slot.  The board also sets how far the pipe can be pushed in.
+  2.5 mm **wire feed-through**, tucked just under the surface the tape runs
+  along: the tape ends outside and a short copper wire runs through to the
+  board's pad, which is far easier to weatherproof than an open slot.  The
+  board also sets how far the pipe can be pushed in.
 
 Made with Claude Opus.
 """
@@ -134,10 +135,11 @@ class PartSpec:
     # small radial hole: the tape ends outside, and a short copper wire
     # passes through to the board's pad.  A 1.5 mm hole is far easier to seal
     # than an open slot, which is the point.
-    pcb_wire_hole_diameter: float = 1.5
-    # Depth of the hole's axis below the frame underside.  Sits between that
-    # underside and the board, so the wire has a straight run to the pad.
-    pcb_wire_hole_z: float = 3.0
+    pcb_wire_hole_diameter: float = 2.5
+    # Material left between the frame underside -- the surface the tape runs
+    # along -- and the near edge of the hole.  The hole's depth is derived
+    # from this, so it stays put against that surface if the diameter changes.
+    pcb_wire_hole_edge_margin: float = 1.0
 
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
@@ -256,20 +258,19 @@ class PartSpec:
         if self.mast_pipe_od is None:
             return  # No sleeve wall between the tape and the board.
 
-        if self.pcb_wire_hole_z < self.pcb_wire_hole_diameter:
+        if self.pcb_wire_hole_edge_margin <= 0.0:
             msg = (
-                f"Feed-through at z=-{self.pcb_wire_hole_z:.1f} mm is too "
-                f"close to the frame underside to leave material above a "
-                f"{self.pcb_wire_hole_diameter:.1f} mm hole."
+                "Feed-through would break through the frame underside that "
+                "the tape runs along."
             )
             raise ValueError(msg)
 
-        if self.pcb_wire_hole_z >= self.pcb_standoff_height:
+        hole_bottom = self.pcb_wire_hole_z + self.pcb_wire_hole_diameter / 2.0
+        if hole_bottom >= self.pcb_standoff_height:
             msg = (
-                f"Feed-through at z=-{self.pcb_wire_hole_z:.1f} mm is at or "
-                f"below the board itself "
-                f"(z=-{self.pcb_standoff_height:.1f} mm); it must come "
-                f"through above the board."
+                f"Feed-through reaches z=-{hole_bottom:.1f} mm, at or below "
+                f"the board itself (z=-{self.pcb_standoff_height:.1f} mm); "
+                f"it must come through above the board."
             )
             raise ValueError(msg)
 
@@ -283,6 +284,13 @@ class PartSpec:
     def pcb_boss_outer_radius(self) -> float:
         """Radius reached by the outside of the PCB mounting bosses."""
         return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
+
+    @property
+    def pcb_wire_hole_z(self) -> float:
+        """Depth of the feed-through's axis below the frame underside."""
+        return (
+            self.pcb_wire_hole_edge_margin + self.pcb_wire_hole_diameter / 2.0
+        )
 
     @property
     def sleeve_mid_radius(self) -> float:
