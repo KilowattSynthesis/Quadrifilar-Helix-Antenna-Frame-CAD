@@ -20,6 +20,13 @@ deg and printed as a single part.
 * **Zip-tie holes** run through each blade near its ends and near the top and
   bottom bars. A tie goes through a hole, wraps around the nearby edge *over
   the tape*, and cinches -- mechanical backup for the adhesive.
+* **Top crossover window** through the taller blade, sitting on the shorter
+  blade's top face, so the shorter loop's tape can cross the axis. It is
+  shortened automatically if the two loop heights are too close to leave a
+  `top_tape_gap_min_bridge` (3 mm) bridge above it -- with the stock 0.44
+  ratio there is only 11.2 mm of headroom at 436 MHz and 5.3 mm at 913 MHz,
+  so the 20 mm wide window comes out 8.2 mm and 2.3 mm tall respectively.
+  Foil tape is thin, so a short window is still enough to pass it.
 * **Mast sleeve** at the bottom, bored for a 1.5 in (38.1 mm) OD PVC pipe,
   with radial screw holes for fastening into the pipe.
 * **Balun PCB mount**: three M3 bosses on a 24 mm bolt circle, matching the
@@ -41,11 +48,13 @@ PCB pad -> underside of the bottom bar -> around the bottom corner
 1. Print the frame upright (as modelled). No supports needed.
 2. Run foil tape along all four tape paths above. Keep it centred on the
    narrow end faces.
-3. Thread a zip tie through each hole, over the tape, and cinch.
-4. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
+3. Pass the shorter loop's top tape through the crossover window in the
+   taller blade.
+4. Thread a zip tie through each hole, over the tape, and cinch.
+5. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
    into the bosses. Solder the tape ends to the pads.
-5. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
+6. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
 Everything is parametric -- see `PartSpec` in `cad/qfh_frame_cad.py` for tape

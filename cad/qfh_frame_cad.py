@@ -24,6 +24,12 @@ each end and near the top/bottom.  A tie threads through a hole, wraps
 around the nearby edge *over the tape*, and cinches -- so the tape is held
 mechanically as well as by its adhesive.
 
+The two loops are different heights, so at the top the taller blade stands
+right where the shorter loop's tape has to cross the axis.  A **crossover
+window** through the taller blade, sitting on the shorter blade's top face,
+lets that tape run straight through.  It is shortened automatically if the
+loop heights are too close to leave a bridge above it.
+
 At the bottom the frame carries a hub that does two jobs:
 
 * a **mast sleeve** that slips over a 1.5 in (38.1 mm) OD PVC pipe, with radial
@@ -82,6 +88,17 @@ class PartSpec:
     # span (from the hub, or from the axis at the top, out to the end).
     tie_hole_bar_radius_fractions: tuple[float, ...] = (0.35, 0.75)
     tie_hole_bar_z: float = 8.0  # Height above bottom / below top.
+
+    # --- Top tape crossover gap -------------------------------------------
+    # The two loops are different heights, so at the top the taller blade
+    # stands right where the shorter loop's tape has to cross the axis.  Cut
+    # a window through the taller blade, sitting on the shorter blade's top
+    # face, for that tape to pass through.
+    top_tape_gap_width: float = 20.0
+    top_tape_gap_height: float = 10.0
+    # Material left above the window, at the very top of the taller blade.
+    # The window is shortened if it would leave less than this.
+    top_tape_gap_min_bridge: float = 3.0
 
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
@@ -148,6 +165,15 @@ class PartSpec:
             msg = "Zip-tie holes are too close to the blade's end face."
             raise ValueError(msg)
 
+        if self.top_tape_gap_headroom <= self.top_tape_gap_min_bridge:
+            msg = (
+                f"The two loops' tops are only "
+                f"{self.top_tape_gap_headroom:.1f} mm apart -- no room for a "
+                f"tape crossover gap that still leaves a "
+                f"{self.top_tape_gap_min_bridge:.1f} mm bridge above it."
+            )
+            raise ValueError(msg)
+
     @property
     def mast_bore_radius(self) -> float:
         """Radius of the hole the PVC pipe slides into."""
@@ -158,6 +184,19 @@ class PartSpec:
     def pcb_boss_outer_radius(self) -> float:
         """Radius reached by the outside of the PCB mounting bosses."""
         return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
+
+    @property
+    def top_tape_gap_headroom(self) -> float:
+        """Height of the taller blade standing above the shorter one."""
+        return abs(self.qfh.large_loop.height - self.qfh.small_loop.height)
+
+    @property
+    def top_tape_gap_height_used(self) -> float:
+        """Gap height actually cut, shortened to keep a top bridge."""
+        return min(
+            self.top_tape_gap_height,
+            self.top_tape_gap_headroom - self.top_tape_gap_min_bridge,
+        )
 
     @property
     def hub_radius(self) -> float:
@@ -271,6 +310,32 @@ def _draw_twisted_blade(
     return p
 
 
+def _top_tape_gap(
+    *, spec: PartSpec, blade_height: float, z_bottom: float
+) -> bd.Part:
+    """Window through the taller blade for the shorter loop's top tape.
+
+    The shorter loop's tape crosses the axis along the top face of its own
+    blade, at ``z_bottom``; the taller blade stands right in the way.  The
+    window sits directly on that face so the tape runs straight through it.
+    """
+    height = spec.top_tape_gap_height_used
+    z_mid = z_bottom + height / 2.0
+
+    # Follow the taller blade's twist at the window's mid-height.
+    angle_deg = 360.0 * spec.qfh.input_spec.turns * z_mid / blade_height
+
+    return (
+        bd.Box(
+            length=spec.top_tape_gap_width,
+            width=spec.tape_land_width * 3.0,  # Punch clean through.
+            height=height,
+        )
+        .rotate(bd.Axis.Z, angle_deg)
+        .translate((0.0, 0.0, z_mid))
+    )
+
+
 def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
     """Mast sleeve + hub plate + balun-PCB bosses, all at/below the bottom.
 
@@ -347,21 +412,50 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
 
 def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
     """Create the QFH antenna support structure."""
-    p = bd.Part(None)
+    large_h = spec.qfh.large_loop.height
+    small_h = spec.qfh.small_loop.height
 
     # Large loop blade: bottom bar along +/-X.
-    p += _draw_twisted_blade(
+    large_blade = _draw_twisted_blade(
         loop_diameter=spec.qfh.large_loop.rad,
-        loop_height=spec.qfh.large_loop.height,
+        loop_height=large_h,
         spec=spec,
     )
 
     # Small loop blade: a quarter turn around, bottom bar along +/-Y.
-    p += _draw_twisted_blade(
+    small_blade = _draw_twisted_blade(
         loop_diameter=spec.qfh.small_loop.rad,
-        loop_height=spec.qfh.small_loop.height,
+        loop_height=small_h,
         spec=spec,
     ).rotate(bd.Axis.Z, 90)
+
+    # The taller blade blocks the shorter loop's tape where it crosses the
+    # axis along its top face, so cut a window through it there.  Cut before
+    # fusing: the two blades touch at the axis, and only the taller one
+    # should lose material.
+    if large_h >= small_h:
+        large_blade -= _top_tape_gap(
+            spec=spec, blade_height=large_h, z_bottom=small_h
+        )
+    else:
+        small_blade -= _top_tape_gap(
+            spec=spec, blade_height=small_h, z_bottom=large_h
+        )
+
+    used = spec.top_tape_gap_height_used
+    if used < spec.top_tape_gap_height:
+        logger.warning(
+            "Top tape gap shortened to {:.1f} mm (asked {:.1f}); the loops' "
+            "tops are only {:.1f} mm apart and a {:.1f} mm bridge is kept.",
+            used,
+            spec.top_tape_gap_height,
+            spec.top_tape_gap_headroom,
+            spec.top_tape_gap_min_bridge,
+        )
+
+    p = bd.Part(None)
+    p += large_blade
+    p += small_blade
 
     # The hub lives entirely at and below z=0, while the blades run upward
     # from z=0, so fusing it in last cannot backfill any of its holes.
