@@ -13,10 +13,17 @@ A 3d-printable QFH antenna frame, made with Build123d. Customizable for any freq
 The frame is two **twisted blades** -- one per bifilar loop -- crossing at 90
 deg and printed as a single part.
 
+Each blade's section is a thin 5 mm core that flares out over the last 10 mm
+at each end to a full 10 mm, so the tape gets a wide land to stick to without
+paying for that thickness along the whole blade -- about 45% less section area
+than a plain 10 mm slab.
+
 * **The conductor is foil tape**, stuck to the flat outer end faces of the
   blades. There are no wire channels to thread. Each blade end face sits
   exactly on the RF design radius, so the tape centreline lands where the
-  solver says the conductor should be.
+  solver says the conductor should be. Note that the flat top and bottom
+  faces, where the tape turns inboard, are only as wide as the core, so tape
+  running along them overhangs a little.
 * **Zip-tie holes** run through each blade near its ends and near the top and
   bottom bars. A tie goes through a hole, wraps around the nearby edge *over
   the tape*, and cinches -- mechanical backup for the adhesive.

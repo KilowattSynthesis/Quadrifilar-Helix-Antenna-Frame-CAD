@@ -2,10 +2,12 @@
 
 Design summary
 --------------
-Each of the two bifilar loops is a single **twisted blade**: a flat rectangular
-slab, ``rad`` long and ``tape_land_width`` thick, extruded from z=0 to the loop
-height while rotating ``turns`` revolutions.  The two blades cross at 90
-deg and fuse into one printable frame.
+Each of the two bifilar loops is a single **twisted blade**: a slab ``rad``
+long, extruded from z=0 to the loop height while rotating ``turns``
+revolutions.  Its section is thin (``blade_core_thickness``) for most of its
+length and flares out over the last ``tape_land_flare_length`` at each end to
+the full ``tape_land_width``, so the material goes where the tape needs it.
+The two blades cross at 90 deg and fuse into one printable frame.
 
 The conductor is **self-adhesive foil tape stuck to the outside of the
 frame** -- no wire channels, no threading.  For one loop, the tape path is::
@@ -79,9 +81,15 @@ class PartSpec:
     qfh: QfhResult
 
     # --- Blade (tape land) -------------------------------------------------
-    # Thickness of the twisted blade == width of the flat face the foil tape
-    # is stuck to.  Use tape a little narrower than this.
-    tape_land_width: float = 8.0
+    # Width of the flat outer end face the foil tape is stuck to.  Use tape a
+    # little narrower than this.
+    tape_land_width: float = 10.0
+    # Thickness of the blade away from the ends.  The section is this thin
+    # for most of its length and flares out to the full tape land only where
+    # the tape actually needs it, which is most of the material saved.
+    blade_core_thickness: float = 5.0
+    # Length, at each end, over which the core flares out to the tape land.
+    tape_land_flare_length: float = 10.0
 
     # --- Zip-tie holes -----------------------------------------------------
     tie_hole_diameter: float = 3.2  # Fits a standard 2.5 x 1.0 mm zip tie.
@@ -152,18 +160,58 @@ class PartSpec:
 
     def __post_init__(self) -> None:
         """Validate spec parameters."""
-        min_half_len = (
-            min(self.qfh.small_loop.rad, self.qfh.large_loop.rad) / 2.0
-        )
-        # Leave the blade ends (the tape lands) clear of the hub.
-        if self.hub_radius > min_half_len - self.hub_edge_margin:
+        self._validate_blade()
+        self._validate_hub()
+        self._validate_pcb_mount()
+        self._validate_tape_path()
+
+    @property
+    def min_half_length(self) -> float:
+        """Half-length of the shorter of the two blades."""
+        return min(self.qfh.small_loop.rad, self.qfh.large_loop.rad) / 2.0
+
+    def _validate_blade(self) -> None:
+        if self.blade_core_thickness > self.tape_land_width:
             msg = (
-                f"Hub (r={self.hub_radius:.1f}) crowds the tape lands at "
-                f"r={min_half_len:.1f}. Use a smaller mast_pipe_od, or set "
-                f"mast_pipe_od=None for no mast sleeve."
+                f"Blade core ({self.blade_core_thickness:.1f} mm) is thicker "
+                f"than the tape land ({self.tape_land_width:.1f} mm) it is "
+                f"supposed to flare out to."
             )
             raise ValueError(msg)
 
+        blade_length = self.min_half_length * 2.0
+        if 2.0 * self.tape_land_flare_length >= blade_length:
+            msg = (
+                f"The two {self.tape_land_flare_length:.1f} mm flares meet in "
+                f"the middle of the shortest blade "
+                f"({blade_length:.1f} mm long)."
+            )
+            raise ValueError(msg)
+
+        if self.tie_hole_inset < self.tie_hole_diameter:
+            msg = "Zip-tie holes are too close to the blade's end face."
+            raise ValueError(msg)
+
+    def _validate_hub(self) -> None:
+        # Leave the blade ends (the tape lands) clear of the hub.
+        if self.hub_radius > self.min_half_length - self.hub_edge_margin:
+            msg = (
+                f"Hub (r={self.hub_radius:.1f}) crowds the tape lands at "
+                f"r={self.min_half_length:.1f}. Use a smaller mast_pipe_od, "
+                f"or set mast_pipe_od=None for no mast sleeve."
+            )
+            raise ValueError(msg)
+
+        if self.top_tape_gap_headroom <= self.top_tape_gap_min_bridge:
+            msg = (
+                f"The two loops' tops are only "
+                f"{self.top_tape_gap_headroom:.1f} mm apart -- no room for a "
+                f"tape crossover gap that still leaves a "
+                f"{self.top_tape_gap_min_bridge:.1f} mm bridge above it."
+            )
+            raise ValueError(msg)
+
+    def _validate_pcb_mount(self) -> None:
         if self.mast_pipe_od is not None and (
             self.pcb_boss_outer_radius > self.mast_bore_radius
         ):
@@ -181,36 +229,26 @@ class PartSpec:
             msg = "PCB screw holes would break through the top of the hub."
             raise ValueError(msg)
 
-        if self.tie_hole_inset < self.tie_hole_diameter:
-            msg = "Zip-tie holes are too close to the blade's end face."
+    def _validate_tape_path(self) -> None:
+        if self.mast_pipe_od is None:
+            return  # No sleeve wall in the tape's way.
+
+        if self.pcb_tape_slot_height < self.pcb_standoff_height:
+            msg = (
+                f"Tape pass-through ({self.pcb_tape_slot_height:.1f} mm) "
+                f"is shallower than the PCB standoff "
+                f"({self.pcb_standoff_height:.1f} mm), so the tape could "
+                f"not reach the board."
+            )
             raise ValueError(msg)
 
-        if self.mast_pipe_od is not None:
-            if self.pcb_tape_slot_height < self.pcb_standoff_height:
-                msg = (
-                    f"Tape pass-through ({self.pcb_tape_slot_height:.1f} mm) "
-                    f"is shallower than the PCB standoff "
-                    f"({self.pcb_standoff_height:.1f} mm), so the tape could "
-                    f"not reach the board."
-                )
-                raise ValueError(msg)
-
-            circumference = 2.0 * math.pi * self.sleeve_mid_radius
-            slot_arc = len(BAR_ANGLES_DEG) * self.pcb_tape_slot_width
-            if slot_arc > 0.7 * circumference:
-                msg = (
-                    f"Tape pass-throughs would remove {slot_arc:.0f} mm of "
-                    f"the sleeve's {circumference:.0f} mm circumference, "
-                    f"leaving too little wall between them."
-                )
-                raise ValueError(msg)
-
-        if self.top_tape_gap_headroom <= self.top_tape_gap_min_bridge:
+        circumference = 2.0 * math.pi * self.sleeve_mid_radius
+        slot_arc = len(BAR_ANGLES_DEG) * self.pcb_tape_slot_width
+        if slot_arc > 0.7 * circumference:
             msg = (
-                f"The two loops' tops are only "
-                f"{self.top_tape_gap_headroom:.1f} mm apart -- no room for a "
-                f"tape crossover gap that still leaves a "
-                f"{self.top_tape_gap_min_bridge:.1f} mm bridge above it."
+                f"Tape pass-throughs would remove {slot_arc:.0f} mm of "
+                f"the sleeve's {circumference:.0f} mm circumference, "
+                f"leaving too little wall between them."
             )
             raise ValueError(msg)
 
@@ -281,6 +319,43 @@ def _tie_hole(
     )
 
 
+def _blade_section(*, loop_diameter: float, spec: PartSpec) -> bd.Face:
+    r"""Build the 2D profile that gets twisted up to make one blade.
+
+    A thin core that flares out at both ends, so material is spent only where
+    it earns its place: the full ``tape_land_width`` appears at the outer end
+    faces, where the foil tape sticks, and the long middle stays down at
+    ``blade_core_thickness``::
+
+        +--_                              _--+   <-- tape land, full width
+        |    \____________________________/    |
+        |     ____________________________     |   <-- thin core
+        +--_/                            \_--+
+
+    Note that the flat top and bottom faces, where the tape turns inboard
+    toward the PCB, are only as wide as the core -- tape running along them
+    overhangs a little.
+    """
+    half_len = loop_diameter / 2.0
+    t_end = spec.tape_land_width / 2.0
+    t_core = spec.blade_core_thickness / 2.0
+    x_core = half_len - spec.tape_land_flare_length
+
+    section = bd.Polygon(
+        (-half_len, -t_end),
+        (-x_core, -t_core),
+        (x_core, -t_core),
+        (half_len, -t_end),
+        (half_len, t_end),
+        (x_core, t_core),
+        (-x_core, t_core),
+        (-half_len, t_end),
+        align=None,
+    ).face()
+    assert section is not None
+    return section
+
+
 def _draw_twisted_blade(
     *,
     loop_diameter: float,
@@ -292,12 +367,10 @@ def _draw_twisted_blade(
     The blade's two end faces are the helical tape lands; they sit at
     +/-``loop_diameter``/2, i.e. exactly on the RF design radius.
     """
-    thickness = spec.tape_land_width
     turns = spec.qfh.input_spec.turns
     half_len = loop_diameter / 2.0
 
-    section = bd.Rectangle(loop_diameter, thickness).face()
-    assert section is not None
+    section = _blade_section(loop_diameter=loop_diameter, spec=spec)
 
     p = bd.Part(None)
     p += bd.Solid.extrude_linear_with_rotation(
@@ -311,7 +384,7 @@ def _draw_twisted_blade(
     def blade_angle_deg(z: float) -> float:
         return 360.0 * turns * z / loop_height
 
-    hole_len = thickness * 3.0
+    hole_len = spec.tape_land_width * 3.0
     holes = bd.Part(None)
 
     # Ties along the two helical end faces (the main tape runs).
