@@ -48,6 +48,16 @@ giving the tape a 10 mm surface where it turns inboard.
   ends outside and a short copper wire passes through to the board's pad --
   much easier to weatherproof than an open slot.
 
+* **Printable sections**: anything taller than `max_print_height` (200 mm by
+  default) is cut into as few equal horizontal sections as will fit, counting
+  the pins that stand proud of each cut. Each joint is a boss on the axis --
+  where both blades cross, so it ties them together -- carrying two locating
+  pins, plus zip-tie anchors out on the arms. The boss is a cone below the
+  cut and a cylinder above it, so both sections print without an overhang
+  under the joint. Set `max_print_height=None` to keep the frame in one
+  piece. The bundled 436 MHz build is 267 mm tall and comes out in two
+  sections; the 913 MHz one is 109 mm and stays whole.
+
 Tape path, per loop:
 
 ```text
@@ -60,23 +70,31 @@ PCB pad -> wire through the feed-through -> underside of the bottom bar
 
 ### Assembly
 
-1. Print the frame upright (as modelled). No supports needed.
-2. Run foil tape along all four tape paths above. Keep it centred on the
-   narrow end faces.
-3. Pass the shorter loop's top tape through the crossover window in the
+1. Print each section upright (as modelled, and exported sitting on the
+   bed). No supports needed.
+2. Stack the sections: the two pins on each joint drop straight into their
+   sockets, and there is only one way they go together -- a blade is
+   symmetric under a half turn about Z, so the other orientation the pins
+   allow is the identical one. Cinch a zip tie through each pair of anchor
+   holes flanking the joint; the tie wraps the blade between them and pulls
+   the joint shut.
+3. Run foil tape along all four tape paths above, across the joints. Keep it
+   centred on the narrow end faces.
+4. Pass the shorter loop's top tape through the crossover window in the
    taller blade.
-4. Thread a zip tie through each hole, over the tape, and cinch.
-5. End each tape run outside the sleeve and solder a short copper wire to
-   it, passed through that bar's 1.5 mm feed-through into the PCB housing.
-6. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
+5. Thread a zip tie through each hole, over the tape, and cinch.
+6. End each tape run outside the sleeve and solder a short copper wire to
+   it, passed through that bar's 2.5 mm feed-through into the PCB housing.
+7. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
    into the bosses; the fourth boss has no matching hole and stays empty.
    Solder the four wires to the pads.
-7. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
+8. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
 Everything is parametric -- see `PartSpec` in `cad/qfh_frame_cad.py` for tape
-land width, tie hole spacing, mast diameter, standoff height, and so on. Set
+land width, tie hole spacing, mast diameter, standoff height, max print
+height, joint pin sizing, and so on. Set
 `mast_pipe_od=None` for antennas too small to straddle a pipe (the bundled
 913 MHz build is only ~46 mm across, so it has no sleeve).
 

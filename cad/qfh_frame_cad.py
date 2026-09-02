@@ -51,9 +51,18 @@ At the bottom the frame carries a hub that does two jobs:
   board's pad, which is far easier to weatherproof than an open slot.  The
   board also sets how far the pipe can be pushed in.
 
+Taller frames do not fit a print bed, so ``qfh_antenna_frame_sections``
+cuts the frame into as few equal horizontal **sections** as will fit under
+``max_print_height`` (default 200 mm, counting the pins that stand proud of
+each cut).  Each joint is a boss on the axis -- where both blades cross, so
+it ties them together -- carrying two locating pins, plus zip-tie anchor
+holes out on the arms where they have the lever arm to resist bending.  Set
+``max_print_height=None`` to keep the frame in one piece.
+
 Made with Claude Opus.
 """
 
+import itertools
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -129,6 +138,38 @@ class PartSpec:
     # The window is shortened if it would leave less than this.
     top_tape_gap_min_bridge: float = 3.0
 
+    # --- Splitting into printable sections --------------------------------
+    # Tall antennas do not fit on a print bed, so the frame is cut into as
+    # few equal horizontal sections as will fit.  Set to None to keep it in
+    # one piece.  The pins that stand proud of each cut are counted against
+    # this, so a section plus its pins really does fit.
+    max_print_height: float | None = 200.0
+
+    # Each joint is a boss on the axis, where both blades cross, carrying two
+    # pins.  Below the cut it is a cone that grows to full diameter, so the
+    # lower section has no overhang under it; above the cut it is a plain
+    # cylinder, whose top face points up and prints fine.
+    joint_boss_diameter: float = 18.0
+    joint_boss_height_below: float = 12.0
+    joint_boss_height_above: float = 12.0
+
+    # Two pins, on opposite sides of the axis.  Each blade is symmetric under
+    # a half turn about Z, so two pins cannot be assembled wrongly: the only
+    # other orientation they allow is the identical one.
+    joint_pin_diameter: float = 4.0
+    joint_pin_length: float = 8.0
+    joint_pin_offset: float = 5.0  # From the axis.
+    joint_pin_clearance: float = 0.3  # Diametral, on the socket.
+    joint_pin_socket_extra_depth: float = 0.5
+    joint_pin_tip_chamfer: float = 0.8  # Lead-in, over the last mm.
+
+    # Zip-tie anchors: a hole through each blade above and below the cut, out
+    # on the arms.  A tie threaded through both wraps the blade between them,
+    # and cinching it pulls the joint shut.  Out on the arms it has the lever
+    # arm to resist the bending the joint actually sees.
+    joint_tie_hole_z_offset: float = 8.0
+    joint_tie_radius_fractions: tuple[float, ...] = (0.65,)
+
     # --- Feed-throughs into the PCB housing -------------------------------
     # The mast sleeve's wall closes the PCB housing off from the tape runs
     # outside it.  Rather than open it up with a window, each bar gets one
@@ -181,6 +222,7 @@ class PartSpec:
         self._validate_hub()
         self._validate_pcb_mount()
         self._validate_tape_path()
+        self._validate_sections()
 
     @property
     def min_half_length(self) -> float:
@@ -254,6 +296,42 @@ class PartSpec:
             msg = "PCB screw holes would break through the top of the hub."
             raise ValueError(msg)
 
+    def _validate_sections(self) -> None:
+        if self.max_print_height is None:
+            return  # Kept in one piece.
+
+        if self.max_print_height <= self.joint_pin_length * 3:
+            msg = (
+                f"max_print_height ({self.max_print_height:.1f} mm) is not "
+                f"usefully bigger than the joint pins "
+                f"({self.joint_pin_length:.1f} mm)."
+            )
+            raise ValueError(msg)
+
+        # A cut has to land on plain twisting blade: clear of the hub below,
+        # and clear of the crossover window near the top.
+        window_lo = min(
+            self.qfh.large_loop.height, self.qfh.small_loop.height
+        )
+        window_hi = window_lo + self.top_tape_gap_height_used
+        for cut_z in self.section_cut_heights:
+            boss_lo = cut_z - self.joint_boss_height_below
+            boss_hi = cut_z + self.joint_boss_height_above
+            if boss_lo <= self.hub_plate_thickness:
+                msg = (
+                    f"A section cut at z={cut_z:.1f} mm puts its joint into "
+                    f"the hub. Adjust max_print_height."
+                )
+                raise ValueError(msg)
+            if boss_lo < window_hi and boss_hi > window_lo:
+                msg = (
+                    f"A section cut at z={cut_z:.1f} mm puts its joint "
+                    f"across the tape crossover window "
+                    f"(z={window_lo:.1f}..{window_hi:.1f} mm). Adjust "
+                    f"max_print_height."
+                )
+                raise ValueError(msg)
+
     def _validate_tape_path(self) -> None:
         if self.mast_pipe_od is None:
             return  # No sleeve wall between the tape and the board.
@@ -284,6 +362,39 @@ class PartSpec:
     def pcb_boss_outer_radius(self) -> float:
         """Radius reached by the outside of the PCB mounting bosses."""
         return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
+
+    @property
+    def frame_z_min(self) -> float:
+        """Lowest z of the whole frame: the mast sleeve's open end."""
+        if self.mast_pipe_od is None:
+            return 0.0
+        return -self.mast_sleeve_length
+
+    @property
+    def frame_z_max(self) -> float:
+        """Highest z of the whole frame: the taller blade's top."""
+        return max(self.qfh.large_loop.height, self.qfh.small_loop.height)
+
+    @property
+    def section_count(self) -> int:
+        """How many printable sections the frame is cut into."""
+        if self.max_print_height is None:
+            return 1
+        # The pins stand proud of each cut, so a section's real print height
+        # is its slice plus a pin.  Budget for that rather than discovering
+        # it at the printer.
+        budget = self.max_print_height - self.joint_pin_length
+        total = self.frame_z_max - self.frame_z_min
+        return max(1, math.ceil(total / budget))
+
+    @property
+    def section_cut_heights(self) -> tuple[float, ...]:
+        """The z heights the frame is cut at, bottom-most first."""
+        n = self.section_count
+        z_lo, z_hi = self.frame_z_min, self.frame_z_max
+        return tuple(
+            z_lo + (z_hi - z_lo) * k / n for k in range(1, n)
+        )
 
     @property
     def pcb_wire_hole_z(self) -> float:
@@ -686,49 +797,218 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
 
 
 # ---------------------------------------------------------------------------
+# Splitting into printable sections
+# ---------------------------------------------------------------------------
+
+
+def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
+    """Boss straddling one cut, on the axis where both blades cross.
+
+    Below the cut it is a cone growing to full diameter, so the lower section
+    has no overhang beneath it; above the cut it is a plain cylinder, whose
+    top face points upward and so prints fine on the upper section.
+    """
+    r_big = spec.joint_boss_diameter / 2.0
+    r_small = spec.blade_core_thickness / 2.0
+
+    p = bd.Part(None)
+    p += bd.Pos(Z=cut_z - spec.joint_boss_height_below / 2.0) * bd.Cone(
+        bottom_radius=r_small,
+        top_radius=r_big,
+        height=spec.joint_boss_height_below,
+    )
+    p += bd.Pos(Z=cut_z + spec.joint_boss_height_above / 2.0) * bd.Cylinder(
+        radius=r_big, height=spec.joint_boss_height_above
+    )
+    return p
+
+
+def _joint_pins(
+    *, spec: PartSpec, cut_z: float, angle_deg: float, socket: bool
+) -> bd.Part | bd.Compound:
+    """Build the two locating pins at one cut, or their sockets.
+
+    Both stand in the z range just above the cut: the pins belong to the
+    section below it, the sockets are bored into the section above.
+    """
+    diameter = spec.joint_pin_diameter + (
+        spec.joint_pin_clearance if socket else 0.0
+    )
+    length = spec.joint_pin_length + (
+        spec.joint_pin_socket_extra_depth if socket else 0.0
+    )
+
+    p = bd.Part(None)
+    for sign in (1.0, -1.0):
+        x, y = _polar(sign * spec.joint_pin_offset, angle_deg)
+        if socket:
+            p += bd.Pos(x, y, cut_z + length / 2.0) * bd.Cylinder(
+                radius=diameter / 2.0, height=length
+            )
+            continue
+
+        # Shank, then a lead-in chamfer over the last mm so the pin finds its
+        # socket even with a little print skew.
+        shank = length - 1.0
+        p += bd.Pos(x, y, cut_z + shank / 2.0) * bd.Cylinder(
+            radius=diameter / 2.0, height=shank
+        )
+        p += bd.Pos(x, y, cut_z + shank + 0.5) * bd.Cone(
+            bottom_radius=diameter / 2.0,
+            top_radius=diameter / 2.0 - spec.joint_pin_tip_chamfer,
+            height=1.0,
+        )
+    return p
+
+
+def _joint_tie_holes(
+    *, spec: PartSpec, cut_z: float
+) -> bd.Part | bd.Compound:
+    """Zip-tie anchor holes flanking one cut, out on both blades' arms.
+
+    A tie threaded through the hole below the cut and the one above wraps the
+    blade between them, so cinching it pulls the joint shut.
+    """
+    turns = spec.qfh.input_spec.turns
+    holes = bd.Part(None)
+
+    for loop, blade_rot in (
+        (spec.qfh.large_loop, 0.0),
+        (spec.qfh.small_loop, 90.0),
+    ):
+        half_len = loop.rad / 2.0
+        for dz in (
+            -spec.joint_tie_hole_z_offset,
+            spec.joint_tie_hole_z_offset,
+        ):
+            z = cut_z + dz
+            if not 0.0 <= z <= loop.height:
+                continue  # Past the end of this blade.
+            angle_deg = 360.0 * turns * z / loop.height + blade_rot
+            for frac in spec.joint_tie_radius_fractions:
+                for end_sign in (0.0, 180.0):
+                    holes += _tie_hole(
+                        radius=half_len * frac,
+                        angle_deg=angle_deg + end_sign,
+                        z=z,
+                        diameter=spec.tie_hole_diameter,
+                        length=spec.tape_land_width * 3.0,
+                    )
+    return holes
+
+
+def qfh_antenna_frame_sections(spec: PartSpec) -> list[bd.Part | bd.Compound]:
+    """Build the frame, split into printable sections.
+
+    Returns the sections in assembled position, bottom-most first.  A frame
+    that already fits comes back as a single-item list.
+
+    Joint features are applied to the whole frame before it is cut, so each
+    cut divides them between the two sections it makes.  Only the pins go on
+    afterwards, since they stand proud of the cut plane and would otherwise
+    be sliced straight off.
+    """
+    cut_zs = spec.section_cut_heights
+    frame = qfh_antenna_frame(spec)
+    if not cut_zs:
+        return [frame]
+
+    turns = spec.qfh.input_spec.turns
+    large_h = spec.qfh.large_loop.height
+
+    def blade_angle_deg(z: float) -> float:
+        return 360.0 * turns * z / large_h
+
+    for cut_z in cut_zs:
+        frame += _joint_boss(spec=spec, cut_z=cut_z)
+        frame -= _joint_pins(
+            spec=spec,
+            cut_z=cut_z,
+            angle_deg=blade_angle_deg(cut_z),
+            socket=True,
+        )
+        frame -= _joint_tie_holes(spec=spec, cut_z=cut_z)
+
+    # Slice into sections.
+    bounds = [spec.frame_z_min, *cut_zs, spec.frame_z_max]
+    span = 4.0 * spec.qfh.large_loop.rad  # Comfortably wider than the frame.
+    sections: list[bd.Part | bd.Compound] = []
+    for z_lo, z_hi in itertools.pairwise(bounds):
+        slab = bd.Pos(Z=(z_lo + z_hi) / 2.0) * bd.Box(
+            length=span, width=span, height=z_hi - z_lo
+        )
+        sections.append(frame & slab)
+
+    # Pins stand up from every section but the top one.
+    for i, cut_z in enumerate(cut_zs):
+        sections[i] += _joint_pins(
+            spec=spec,
+            cut_z=cut_z,
+            angle_deg=blade_angle_deg(cut_z),
+            socket=False,
+        )
+
+    logger.info(
+        "Split into {} sections at z = {}; tallest is {:.1f} mm "
+        "(max print height {:.1f} mm)",
+        len(sections),
+        ", ".join(f"{z:.1f}" for z in cut_zs),
+        max(s.bounding_box().size.Z for s in sections),
+        spec.max_print_height,
+    )
+    return sections
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 
 def main() -> None:
     """Generate the QFH antenna support structure and export."""
-    parts = {
-        # 436 MHz: ~100 mm across, so it straddles a 1.5 in PVC mast.
-        "QFH_Antenna_436_MHz": show(
-            qfh_antenna_frame(
-                PartSpec(
-                    qfh=calculate_qfh(
-                        QfhInputSpec(
-                            frequency_hz=436.0e6,
-                            wire_diameter=1.5,
-                            wire_bending_radius=3.0,
-                        )
-                    )
+    specs = {
+        # 436 MHz: ~100 mm across, so it straddles a 1.5 in PVC mast.  At
+        # 267 mm tall it does not fit a print bed, so it comes out in two
+        # sections that pin and zip-tie together.
+        "QFH_Antenna_436_MHz": PartSpec(
+            qfh=calculate_qfh(
+                QfhInputSpec(
+                    frequency_hz=436.0e6,
+                    wire_diameter=1.5,
+                    wire_bending_radius=3.0,
                 )
             )
         ),
         # 913 MHz: only ~46 mm across -- narrower than a 1.5 in pipe -- so
-        # there is no mast sleeve; it just carries the balun PCB.
-        "QFH_Antenna_913_MHz": (
-            qfh_antenna_frame(
-                PartSpec(
-                    qfh=calculate_qfh(
-                        QfhInputSpec(
-                            frequency_hz=913.0e6,
-                            wire_diameter=1.5,  # Conductor outer dia (mm).
-                            wire_bending_radius=3.0,  # Bending radius (mm).
-                            ratio=0.44,  # Width / height ratio.
-                            turns=0.5,  # Half-turn helix.
-                            num_wavelengths=1.0,  # One wavelength per loop.
-                        )
-                    ),
-                    mast_pipe_od=None,
+        # there is no mast sleeve; it just carries the balun PCB.  At 109 mm
+        # tall it prints in one piece.
+        "QFH_Antenna_913_MHz": PartSpec(
+            qfh=calculate_qfh(
+                QfhInputSpec(
+                    frequency_hz=913.0e6,
+                    wire_diameter=1.5,  # Conductor outer dia (mm).
+                    wire_bending_radius=3.0,  # Bending radius (mm).
+                    ratio=0.44,  # Width / height ratio.
+                    turns=0.5,  # Half-turn helix.
+                    num_wavelengths=1.0,  # One wavelength per loop.
                 )
-            )
+            ),
+            mast_pipe_od=None,
         ),
     }
 
+    parts: dict[str, bd.Part | bd.Compound | bd.Solid] = {}
+    for name, spec in specs.items():
+        sections = qfh_antenna_frame_sections(spec)
+        if len(sections) == 1:
+            parts[name] = sections[0]
+            continue
+        for i, section in enumerate(sections, start=1):
+            parts[f"{name}_section_{i}_of_{len(sections)}"] = section
+
     logger.info("Showing CAD model(s)")
+    for part in parts.values():
+        show(part)
 
     (
         export_folder := Path(__file__).parent.parent
@@ -743,8 +1023,12 @@ def main() -> None:
         if not part.is_manifold:
             logger.warning('Part "{}" is not manifold', name)
 
-        bd.export_stl(part, str(export_folder / f"{name}.stl"))
-        bd.export_step(part, str(export_folder / f"{name}.step"))
+        # Drop each section onto the print bed rather than leaving it at its
+        # assembled height.
+        printable = part.translate((0, 0, -part.bounding_box().min.Z))
+
+        bd.export_stl(printable, str(export_folder / f"{name}.stl"))
+        bd.export_step(printable, str(export_folder / f"{name}.step"))
         logger.info('Exported "{}" to {}', name, export_folder)
 
 
