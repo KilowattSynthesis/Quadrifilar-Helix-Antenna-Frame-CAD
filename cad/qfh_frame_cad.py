@@ -227,8 +227,11 @@ class PartSpec:
     mast_sleeve_wall: float = 8.0  # Doubled: this is what grips the mast.
     mast_sleeve_length: float = 40.0  # Hangs below the frame.
     mast_screw_hole_diameter: float = 3.4  # M3 clearance, into the pipe.
-    mast_screw_count: int = 3
-    mast_screw_z_from_sleeve_end: float = 12.0
+    mast_screw_count: int = 6
+    # One ring of holes per entry, each measured up from the sleeve's open
+    # (bottom) end.  Two rows -- one near each end of the sleeve -- grip the
+    # pipe without relying on a single ring to resist tilting.
+    mast_screw_rows_z_from_sleeve_end: tuple[float, ...] = (12.0, 28.0)
 
     # Hub plate: fills the 45 deg gaps between the bottom bars so the sleeve
     # and the PCB bosses have something to hang from.
@@ -756,21 +759,27 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
         )
 
         # Radial screw holes, for screwing the sleeve to the mast pipe.
-        z_screw = -(
-            spec.mast_sleeve_length - spec.mast_screw_z_from_sleeve_end
-        )
-        for i in range(spec.mast_screw_count):
-            # Offset off the bar axes, clear of the tape runs above.
-            ang = 360.0 * i / spec.mast_screw_count + 45.0
-            p -= (
-                bd.Cylinder(
-                    radius=spec.mast_screw_hole_diameter / 2.0,
-                    height=spec.mast_sleeve_wall * 3.0,
-                    rotation=(0, 90, 0),  # Axis along X, radial once rotated.
+        # Each row is staggered half a step from the last so the holes don't
+        # all line up along the same four bar lines.
+        step = 360.0 / spec.mast_screw_count
+        for row, z_from_end in enumerate(
+            spec.mast_screw_rows_z_from_sleeve_end
+        ):
+            z_screw = -(spec.mast_sleeve_length - z_from_end)
+            row_offset = 45.0 + (step / 2.0) * (row % 2)
+            for i in range(spec.mast_screw_count):
+                # Offset off the bar axes, clear of the tape runs above.
+                ang = step * i + row_offset
+                p -= (
+                    bd.Cylinder(
+                        radius=spec.mast_screw_hole_diameter / 2.0,
+                        height=spec.mast_sleeve_wall * 3.0,
+                        # Axis along X, radial once rotated.
+                        rotation=(0, 90, 0),
+                    )
+                    .rotate(bd.Axis.Z, ang)
+                    .translate((*_polar(r_mid, ang), z_screw))
                 )
-                .rotate(bd.Axis.Z, ang)
-                .translate((*_polar(r_mid, ang), z_screw))
-            )
 
         # One small feed-through per bar: the tape stops outside the
         # sleeve and a short copper wire runs through to the board's pad.
