@@ -893,8 +893,9 @@ def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
     """Boss straddling one cut, on the axis where both blades cross.
 
     Below the cut it is a cone growing to full diameter, so the lower section
-    has no overhang beneath it; above the cut it is a plain cylinder, whose
-    top face points upward and so prints fine on the upper section.
+    has no overhang beneath it; above the cut it is a cone shrinking back
+    down to the blade core, tapering in as it rises so it prints fine on the
+    upper section too.
     """
     r_big = spec.joint_boss_diameter / 2.0
     r_small = spec.blade_core_thickness / 2.0
@@ -905,8 +906,10 @@ def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
         top_radius=r_big,
         height=spec.joint_boss_height_below,
     )
-    p += bd.Pos(Z=cut_z + spec.joint_boss_height_above / 2.0) * bd.Cylinder(
-        radius=r_big, height=spec.joint_boss_height_above
+    p += bd.Pos(Z=cut_z + spec.joint_boss_height_above / 2.0) * bd.Cone(
+        bottom_radius=r_big,
+        top_radius=r_small,
+        height=spec.joint_boss_height_above,
     )
     return p
 
