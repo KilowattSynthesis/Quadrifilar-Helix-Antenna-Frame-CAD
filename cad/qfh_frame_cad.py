@@ -185,6 +185,12 @@ class PartSpec:
     joint_pin_offset: float = 5.0  # From the axis.
     # And more out on both blades' arms, as fractions of the arm's length.
     joint_pin_radius_fractions: tuple[float, ...] = (0.45, 0.8)
+    # A bigger ball right on the axis, between the flanking pair, sharing the
+    # boss with them.  It carries no orientation information by itself (it is
+    # on the axis of rotation), but being the biggest single feature at the
+    # joint, it centres the two sections against each other and stiffens the
+    # boss against wobble the smaller pins alone would allow.
+    joint_center_ball_diameter: float = 6.0
     # Which side of a cut carries the balls.  With them on the section above
     # (the default), the section below gets a dish that opens upward -- about
     # the easiest feature there is to print -- while the balls themselves hang
@@ -359,11 +365,29 @@ class PartSpec:
             )
             raise ValueError(msg)
 
+        # The centre ball has to fit inside the boss, and clear of the
+        # flanking pair either side of it.
+        if self.joint_center_ball_diameter > self.joint_boss_diameter - 2.0:
+            msg = (
+                f"Centre ball ({self.joint_center_ball_diameter:.1f} mm) "
+                f"leaves under 1 mm of wall in the "
+                f"{self.joint_boss_diameter:.1f} mm joint boss."
+            )
+            raise ValueError(msg)
+        min_offset = (
+            self.joint_center_ball_diameter + self.joint_pin_diameter
+        ) / 2.0
+        if self.joint_pin_offset < min_offset:
+            msg = (
+                f"Flanking pins (offset {self.joint_pin_offset:.1f} mm) "
+                f"collide with the {self.joint_center_ball_diameter:.1f} mm "
+                f"centre ball; offset must be at least {min_offset:.1f} mm."
+            )
+            raise ValueError(msg)
+
         # A cut has to land on plain twisting blade: clear of the hub below,
         # and clear of the crossover window near the top.
-        window_lo = min(
-            self.qfh.large_loop.height, self.qfh.small_loop.height
-        )
+        window_lo = min(self.qfh.large_loop.height, self.qfh.small_loop.height)
         window_hi = window_lo + self.top_tape_gap_height_used
         for cut_z in self.section_cut_heights:
             boss_lo = cut_z - self.joint_boss_height_below
@@ -443,9 +467,7 @@ class PartSpec:
         """The z heights the frame is cut at, bottom-most first."""
         n = self.section_count
         z_lo, z_hi = self.frame_z_min, self.frame_z_max
-        return tuple(
-            z_lo + (z_hi - z_lo) * k / n for k in range(1, n)
-        )
+        return tuple(z_lo + (z_hi - z_lo) * k / n for k in range(1, n))
 
     @property
     def pcb_wire_hole_z(self) -> float:
@@ -641,9 +663,7 @@ def _draw_twisted_blade(
             spec=spec,
             blade_height=loop_height,
             z_bottom=crossover_z,
-            z_top=(
-                core_top + pad_t if z_top >= core_top - 1e-6 else z_top
-            ),
+            z_top=(core_top + pad_t if z_top >= core_top - 1e-6 else z_top),
         )
 
     p = bd.Part(None)
@@ -926,6 +946,21 @@ def _joint_pin_positions(
     return positions
 
 
+def _joint_ball(
+    *, diameter: float, sign: float, tip_flat: float
+) -> bd.Part | bd.Compound:
+    """Add a single locating ball (or its socket), trimmed at the outer pole.
+
+    Centred on the origin; the caller positions it on the cut plane.  See
+    ``joint_pin_tip_flat`` for why the outer pole is trimmed away.
+    """
+    radius = diameter / 2.0
+    cap = bd.Pos(Z=sign * (2.0 * radius - tip_flat)) * bd.Box(
+        4.0 * radius, 4.0 * radius, 2.0 * radius
+    )
+    return bd.Sphere(radius=radius) - cap
+
+
 def _joint_pins(
     *, spec: PartSpec, cut_z: float, socket: bool
 ) -> bd.Part | bd.Compound:
@@ -936,29 +971,29 @@ def _joint_pins(
     always use the same half, the one ``joint_balls_on_lower_section`` puts
     the protruding dome in.
     """
-    diameter = spec.joint_pin_diameter + (
-        spec.joint_pin_clearance if socket else 0.0
-    )
-    radius = diameter / 2.0
+    clearance = spec.joint_pin_clearance if socket else 0.0
     sign = 1.0 if spec.joint_balls_on_lower_section else -1.0
-
-    # Trim the outer pole away (see joint_pin_tip_flat).  The inner one is
-    # buried in the section the feature belongs to, so it needs no such
-    # treatment.  Taking the same slice off ball and socket alike leaves the
-    # clearance between them untouched.
-    cap = bd.Pos(
-        Z=sign * (2.0 * radius - spec.joint_pin_tip_flat)
-    ) * bd.Box(4.0 * radius, 4.0 * radius, 2.0 * radius)
 
     p = bd.Part(None)
     for x, y in _joint_pin_positions(spec=spec, cut_z=cut_z):
-        p += bd.Pos(x, y, cut_z) * (bd.Sphere(radius=radius) - cap)
+        ball = _joint_ball(
+            diameter=spec.joint_pin_diameter + clearance,
+            sign=sign,
+            tip_flat=spec.joint_pin_tip_flat,
+        )
+        p += bd.Pos(x, y, cut_z) * ball
+
+    # The bigger centre ball, right on the axis alongside the flanking pair.
+    center_ball = _joint_ball(
+        diameter=spec.joint_center_ball_diameter + clearance,
+        sign=sign,
+        tip_flat=spec.joint_pin_tip_flat,
+    )
+    p += bd.Pos(0.0, 0.0, cut_z) * center_ball
     return p
 
 
-def _joint_tie_holes(
-    *, spec: PartSpec, cut_z: float
-) -> bd.Part | bd.Compound:
+def _joint_tie_holes(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
     """Zip-tie anchor holes flanking one cut, out on both blades' arms.
 
     A tie threaded through the hole below the cut and the one above wraps the
@@ -1115,9 +1150,7 @@ def main() -> None:
     logger.info("Showing {}", ", ".join(shown))
     show(
         *(
-            part.translate(
-                (i * pitch, 0.0, -part.bounding_box().min.Z)
-            )
+            part.translate((i * pitch, 0.0, -part.bounding_box().min.Z))
             for i, part in enumerate(shown.values())
         )
     )
