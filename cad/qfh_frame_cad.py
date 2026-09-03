@@ -53,11 +53,15 @@ At the bottom the frame carries a hub that does two jobs:
 
 Taller frames do not fit a print bed, so ``qfh_antenna_frame_sections``
 cuts the frame into as few equal horizontal **sections** as will fit under
-``max_print_height`` (default 200 mm, counting the pins that stand proud of
-each cut).  Each joint is a boss on the axis -- where both blades cross, so
-it ties them together -- carrying two locating pins, plus zip-tie anchor
-holes out on the arms where they have the lever arm to resist bending.  Set
-``max_print_height=None`` to keep the frame in one piece.
+``max_print_height`` (default 200 mm, counting the balls that stand proud of
+each cut).  Locating pins are 3 mm **balls** sitting on the cut plane, half
+proud of the section below and half dished into the one above: a pair on the
+axis, inside a boss that also ties the two blades together, and more out on
+both blades' arms.  A ball reaches only its own radius above the plane, which
+is what lets pins go out on the arms at all -- a pin standing any real height
+there would twist straight out the side of the blade as the blade turns.
+Zip-tie anchor holes flank each cut further out, where they have the lever
+arm to resist bending.  Set ``max_print_height=None`` for one piece.
 
 Made with Claude Opus.
 """
@@ -151,17 +155,28 @@ class PartSpec:
     # cylinder, whose top face points up and prints fine.
     joint_boss_diameter: float = 18.0
     joint_boss_height_below: float = 12.0
-    joint_boss_height_above: float = 12.0
+    joint_boss_height_above: float = 8.0
 
-    # Two pins, on opposite sides of the axis.  Each blade is symmetric under
-    # a half turn about Z, so two pins cannot be assembled wrongly: the only
-    # other orientation they allow is the identical one.
-    joint_pin_diameter: float = 4.0
-    joint_pin_length: float = 8.0
-    joint_pin_offset: float = 5.0  # From the axis.
+    # The pins are balls sitting on the cut plane: the lower section grows a
+    # protruding dome, the upper one a matching dished socket.  A ball reaches
+    # only its own radius above the plane, which is what lets pins go out on
+    # the arms at all -- a pin standing any real height there would twist
+    # straight out the side of the blade, since the blade turns as it rises.
+    # They also self-centre, so the joint pulls itself into line as it closes.
+    joint_pin_diameter: float = 3.0
     joint_pin_clearance: float = 0.3  # Diametral, on the socket.
-    joint_pin_socket_extra_depth: float = 0.5
-    joint_pin_tip_chamfer: float = 0.8  # Lead-in, over the last mm.
+    # The pair flanking the axis, inside the boss.  Two is enough to fix the
+    # orientation: each blade is symmetric under a half turn about Z, so the
+    # only other orientation they allow is the identical one.
+    joint_pin_offset: float = 5.0  # From the axis.
+    # And more out on both blades' arms, as fractions of the arm's length.
+    joint_pin_radius_fractions: tuple[float, ...] = (0.45, 0.8)
+    # A whisker taken off the top of every ball and socket.  A sphere's mesh
+    # collapses to a point at its poles, and the upper pole sits on the
+    # exposed dome, where that leaves a zero-area triangle and an STL that
+    # fails a watertight check.  Cutting the pole away removes it, and it
+    # gives the printed tip a real top layer instead of a point.
+    joint_pin_tip_flat: float = 0.15
 
     # Zip-tie anchors: a hole through each blade above and below the cut, out
     # on the arms.  A tie threaded through both wraps the blade between them,
@@ -300,11 +315,22 @@ class PartSpec:
         if self.max_print_height is None:
             return  # Kept in one piece.
 
-        if self.max_print_height <= self.joint_pin_length * 3:
+        joint_height = (
+            self.joint_boss_height_below + self.joint_boss_height_above
+        )
+        if self.max_print_height <= joint_height * 2:
             msg = (
                 f"max_print_height ({self.max_print_height:.1f} mm) is not "
-                f"usefully bigger than the joint pins "
-                f"({self.joint_pin_length:.1f} mm)."
+                f"usefully bigger than a joint ({joint_height:.1f} mm)."
+            )
+            raise ValueError(msg)
+
+        # An arm ball has to fit inside the blade's thin core.
+        if self.joint_pin_diameter > self.blade_core_thickness - 1.0:
+            msg = (
+                f"Joint balls ({self.joint_pin_diameter:.1f} mm) leave under "
+                f"0.5 mm of wall in the "
+                f"{self.blade_core_thickness:.1f} mm blade core."
             )
             raise ValueError(msg)
 
@@ -380,10 +406,10 @@ class PartSpec:
         """How many printable sections the frame is cut into."""
         if self.max_print_height is None:
             return 1
-        # The pins stand proud of each cut, so a section's real print height
-        # is its slice plus a pin.  Budget for that rather than discovering
-        # it at the printer.
-        budget = self.max_print_height - self.joint_pin_length
+        # The balls stand proud of each cut by their radius, so a section's
+        # real print height is its slice plus that.  Budget for it rather
+        # than discovering it at the printer.
+        budget = self.max_print_height - self.joint_pin_diameter / 2.0
         total = self.frame_z_max - self.frame_z_min
         return max(1, math.ceil(total / budget))
 
@@ -823,41 +849,64 @@ def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
     return p
 
 
-def _joint_pins(
-    *, spec: PartSpec, cut_z: float, angle_deg: float, socket: bool
-) -> bd.Part | bd.Compound:
-    """Build the two locating pins at one cut, or their sockets.
+def _joint_pin_positions(
+    *, spec: PartSpec, cut_z: float
+) -> list[tuple[float, float]]:
+    """Where the balls sit on one cut plane.
 
-    Both stand in the z range just above the cut: the pins belong to the
-    section below it, the sockets are bored into the section above.
+    A pair flanking the axis inside the boss, plus more out on both blades'
+    arms, each at that blade's own angle where the cut crosses it.
+    """
+    turns = spec.qfh.input_spec.turns
+    positions: list[tuple[float, float]] = []
+
+    # The central pair, laid along the large blade.
+    axis_angle_deg = 360.0 * turns * cut_z / spec.qfh.large_loop.height
+    positions += [
+        _polar(sign * spec.joint_pin_offset, axis_angle_deg)
+        for sign in (1.0, -1.0)
+    ]
+
+    # Out on the arms, on both blades.
+    for loop, blade_rot in (
+        (spec.qfh.large_loop, 0.0),
+        (spec.qfh.small_loop, 90.0),
+    ):
+        if cut_z > loop.height:
+            continue  # Past the end of this blade.
+        angle_deg = 360.0 * turns * cut_z / loop.height + blade_rot
+        positions += [
+            _polar(loop.rad / 2.0 * frac, angle_deg + end_sign)
+            for frac in spec.joint_pin_radius_fractions
+            for end_sign in (0.0, 180.0)
+        ]
+
+    return positions
+
+
+def _joint_pins(
+    *, spec: PartSpec, cut_z: float, socket: bool
+) -> bd.Part | bd.Compound:
+    """Build the balls at one cut, or the sockets they seat into.
+
+    Each ball is centred on the cut plane, so half of it stands proud of the
+    section below and half is dished out of the section above.
     """
     diameter = spec.joint_pin_diameter + (
         spec.joint_pin_clearance if socket else 0.0
     )
-    length = spec.joint_pin_length + (
-        spec.joint_pin_socket_extra_depth if socket else 0.0
+
+    radius = diameter / 2.0
+    # Trim the upper pole away (see joint_pin_tip_flat).  The lower one is
+    # buried in the section below, so it needs no such treatment.  Taking the
+    # same slice off ball and socket alike keeps the clearance between them.
+    cap = bd.Pos(Z=radius - spec.joint_pin_tip_flat + radius) * bd.Box(
+        4.0 * radius, 4.0 * radius, 2.0 * radius
     )
 
     p = bd.Part(None)
-    for sign in (1.0, -1.0):
-        x, y = _polar(sign * spec.joint_pin_offset, angle_deg)
-        if socket:
-            p += bd.Pos(x, y, cut_z + length / 2.0) * bd.Cylinder(
-                radius=diameter / 2.0, height=length
-            )
-            continue
-
-        # Shank, then a lead-in chamfer over the last mm so the pin finds its
-        # socket even with a little print skew.
-        shank = length - 1.0
-        p += bd.Pos(x, y, cut_z + shank / 2.0) * bd.Cylinder(
-            radius=diameter / 2.0, height=shank
-        )
-        p += bd.Pos(x, y, cut_z + shank + 0.5) * bd.Cone(
-            bottom_radius=diameter / 2.0,
-            top_radius=diameter / 2.0 - spec.joint_pin_tip_chamfer,
-            height=1.0,
-        )
+    for x, y in _joint_pin_positions(spec=spec, cut_z=cut_z):
+        p += bd.Pos(x, y, cut_z) * (bd.Sphere(radius=radius) - cap)
     return p
 
 
@@ -913,20 +962,8 @@ def qfh_antenna_frame_sections(spec: PartSpec) -> list[bd.Part | bd.Compound]:
     if not cut_zs:
         return [frame]
 
-    turns = spec.qfh.input_spec.turns
-    large_h = spec.qfh.large_loop.height
-
-    def blade_angle_deg(z: float) -> float:
-        return 360.0 * turns * z / large_h
-
     for cut_z in cut_zs:
         frame += _joint_boss(spec=spec, cut_z=cut_z)
-        frame -= _joint_pins(
-            spec=spec,
-            cut_z=cut_z,
-            angle_deg=blade_angle_deg(cut_z),
-            socket=True,
-        )
         frame -= _joint_tie_holes(spec=spec, cut_z=cut_z)
 
     # Slice into sections.
@@ -939,14 +976,13 @@ def qfh_antenna_frame_sections(spec: PartSpec) -> list[bd.Part | bd.Compound]:
         )
         sections.append(frame & slab)
 
-    # Pins stand up from every section but the top one.
+    # Balls straddle the cut plane, so unlike the boss and the tie holes they
+    # cannot be applied before the split: each half belongs to one section
+    # only.  The section below a cut grows the balls, the one above is dished
+    # out to receive them.
     for i, cut_z in enumerate(cut_zs):
-        sections[i] += _joint_pins(
-            spec=spec,
-            cut_z=cut_z,
-            angle_deg=blade_angle_deg(cut_z),
-            socket=False,
-        )
+        sections[i] += _joint_pins(spec=spec, cut_z=cut_z, socket=False)
+        sections[i + 1] -= _joint_pins(spec=spec, cut_z=cut_z, socket=True)
 
     logger.info(
         "Split into {} sections at z = {}; tallest is {:.1f} mm "

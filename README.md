@@ -50,11 +50,15 @@ giving the tape a 10 mm surface where it turns inboard.
 
 * **Printable sections**: anything taller than `max_print_height` (200 mm by
   default) is cut into as few equal horizontal sections as will fit, counting
-  the pins that stand proud of each cut. Each joint is a boss on the axis --
-  where both blades cross, so it ties them together -- carrying two locating
-  pins, plus zip-tie anchors out on the arms. The boss is a cone below the
-  cut and a cylinder above it, so both sections print without an overhang
-  under the joint. Set `max_print_height=None` to keep the frame in one
+  the balls that stand proud of each cut. Locating pins are 3 mm **balls**
+  sitting on the cut plane -- half proud of the section below, half dished
+  into the one above -- placed both on the axis and out on both blades' arms.
+  Balls self-centre as the joint closes, and reaching only their own radius
+  above the plane is what lets pins go out on the arms at all: a pin standing
+  any real height there would twist straight out the side of the blade. The
+  axial pair sits in a boss that also ties the two blades together, a cone
+  below the cut and a cylinder above it so both sections print without an
+  overhang under the joint. Zip-tie anchors flank each cut further out. Set `max_print_height=None` to keep the frame in one
   piece. The bundled 436 MHz build is 267 mm tall and comes out in two
   sections; the 913 MHz one is 109 mm and stays whole.
 
@@ -72,8 +76,8 @@ PCB pad -> wire through the feed-through -> underside of the bottom bar
 
 1. Print each section upright (as modelled, and exported sitting on the
    bed). No supports needed.
-2. Stack the sections: the two pins on each joint drop straight into their
-   sockets, and there is only one way they go together -- a blade is
+2. Stack the sections: the balls drop into their sockets and pull the joint
+   into line, and there is only one way they go together -- a blade is
    symmetric under a half turn about Z, so the other orientation the pins
    allow is the identical one. Cinch a zip tie through each pair of anchor
    holes flanking the joint; the tie wraps the blade between them and pulls
