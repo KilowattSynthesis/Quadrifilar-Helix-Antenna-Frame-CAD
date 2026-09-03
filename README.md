@@ -17,8 +17,11 @@ Each blade's section is a thin 5 mm core that flares out over the last 10 mm
 at each end to a full 10 mm, so the tape gets a wide land to stick to without
 paying for that thickness along the whole blade -- about 45% less section area
 than a plain 10 mm slab. The flare only widens the blade radially, so the top
-and bottom 3 mm of every blade is a full-width land across its whole length,
-giving the tape a 10 mm surface where it turns inboard.
+and bottom of every blade is a full-width land across its whole length,
+giving the tape a 10 mm surface where it turns inboard. The bottom land is
+the thicker of the two -- it runs up to the outside top of the PCB enclosure
+(6 mm), so the base of the antenna is one solid full-width slab flush with
+the hub, which is where the frame carries the most load.
 
 * **The conductor is foil tape**, stuck to the flat outer end faces of the
   blades. There are no wire channels to thread. Each blade end face sits
@@ -35,7 +38,8 @@ giving the tape a 10 mm surface where it turns inboard.
   so the 20 mm wide window comes out 8.2 mm and 2.3 mm tall respectively.
   Foil tape is thin, so a short window is still enough to pass it.
 * **Mast sleeve** at the bottom, bored for a 1.5 in (38.1 mm) OD PVC pipe,
-  with radial screw holes for fastening into the pipe.
+  with radial screw holes for fastening into the pipe. The wall is 8 mm --
+  this is the joint the whole antenna hangs off, so it is deliberately heavy.
 * **Balun PCB mount**: four M3 bosses on a 24 mm bolt circle, matching the
   [QFHBAL01](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) board. That board has
   three holes and an RF connector in the fourth quadrant, so one boss goes

@@ -7,9 +7,11 @@ long, extruded from z=0 to the loop height while rotating ``turns``
 revolutions.  Its section is thin (``blade_core_thickness``) for most of its
 length and flares out over the last ``tape_land_flare_length`` at each end to
 the full ``tape_land_width``, so the material goes where the tape needs it.
-The flare only widens the blade radially, so the top and bottom
-``tape_pad_thickness`` of every blade is a full-width land instead, giving the
-tape something to sit on where it turns inboard.  The two blades cross at 90
+The flare only widens the blade radially, so the top and bottom of every
+blade is a full-width land instead, giving the tape something to sit on where
+it turns inboard.  The bottom land is the thicker of the two: it runs up to
+the outside top of the PCB enclosure, so the base of the antenna is one solid
+full-width slab flush with the hub.  The two blades cross at 90
 deg and fuse into one printable frame.
 
 The conductor is **self-adhesive foil tape stuck to the outside of the
@@ -118,6 +120,10 @@ class PartSpec:
     # the full tape land width, across the whole blade: a
     # tape_land_width x rad x tape_pad_thickness slab at each end.  They
     # occupy the blade's own last few mm, so the loop height is unchanged.
+    #
+    # The bottom one is thicker: it runs all the way up to the outside top of
+    # the PCB enclosure (see ``bottom_land_thickness``), so the whole base of
+    # the antenna is one full-width slab flush with the hub.
     tape_pad_thickness: float = 3.0
 
     # --- Zip-tie holes -----------------------------------------------------
@@ -213,7 +219,7 @@ class PartSpec:
     # pipe); the hub then reduces to a plate carrying just the PCB bosses.
     mast_pipe_od: float | None = 1.5 * MM_PER_INCH  # 38.1 mm: PVC pipe OD.
     mast_bore_clearance: float = 0.4  # Diametral slip fit.
-    mast_sleeve_wall: float = 4.0
+    mast_sleeve_wall: float = 8.0  # Doubled: this is what grips the mast.
     mast_sleeve_length: float = 40.0  # Hangs below the frame.
     mast_screw_hole_diameter: float = 3.4  # M3 clearance, into the pipe.
     mast_screw_count: int = 3
@@ -277,11 +283,11 @@ class PartSpec:
             msg = "Zip-tie holes are too close to the blade's end face."
             raise ValueError(msg)
 
-        if self.tape_pad_thickness >= self.tie_hole_bar_z:
+        if self.bottom_land_thickness >= self.tie_hole_bar_z:
             msg = (
-                f"Tape pads ({self.tape_pad_thickness:.1f} mm) reach the bar "
-                f"zip-tie holes at z={self.tie_hole_bar_z:.1f} mm, so a tie "
-                f"could not wrap around them."
+                f"Tape pads ({self.bottom_land_thickness:.1f} mm) reach "
+                f"the bar zip-tie holes at z={self.tie_hole_bar_z:.1f} mm, "
+                f"so a tie could not wrap around them."
             )
             raise ValueError(msg)
 
@@ -451,6 +457,16 @@ class PartSpec:
         return abs(self.qfh.large_loop.height - self.qfh.small_loop.height)
 
     @property
+    def bottom_land_thickness(self) -> float:
+        """Thickness of the full-width land along the bottom of each blade.
+
+        Taken up to the outside top of the PCB enclosure -- the hub plate's
+        upper face -- so the base of the antenna is one solid full-width slab
+        flush with the hub, rather than a thin land on a thin core.
+        """
+        return max(self.tape_pad_thickness, self.hub_plate_thickness)
+
+    @property
     def top_tape_gap_bridge(self) -> float:
         """Material kept above the crossover window.
 
@@ -583,6 +599,7 @@ def _draw_twisted_blade(
     turns = spec.qfh.input_spec.turns
     half_len = loop_diameter / 2.0
     pad_t = spec.tape_pad_thickness
+    bottom_t = spec.bottom_land_thickness
 
     # The blade is a stack of three twisted segments rather than one solid
     # with pads laid over it: the flared core in the middle, and a full-width
@@ -604,7 +621,7 @@ def _draw_twisted_blade(
             z_end=z_end,
         )
 
-    core = bd.Part(None) + segment(core_section, pad_t, core_top)
+    core = bd.Part(None) + segment(core_section, bottom_t, core_top)
 
     # Window for the other loop's tape.  Cut it from the bare core, letting
     # the cutter overshoot the core's top face rather than stopping flush
@@ -622,7 +639,7 @@ def _draw_twisted_blade(
         )
 
     p = bd.Part(None)
-    p += segment(pad_section, 0.0, pad_t)
+    p += segment(pad_section, 0.0, bottom_t)
     p += core
     p += segment(pad_section, core_top, loop_height)
 
