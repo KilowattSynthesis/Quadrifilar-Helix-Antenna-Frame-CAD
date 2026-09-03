@@ -89,6 +89,11 @@ MM_PER_INCH = 25.4
 # runs head inboard along these.
 BAR_ANGLES_DEG = (0.0, 90.0, 180.0, 270.0)
 
+# Which build ``main`` puts in the viewer, and how far apart its sections are
+# stood.  Everything is still exported; this only picks what is displayed.
+SHOWN_PART_PREFIX = "QFH_Antenna_436_MHz"
+SHOWN_PART_GAP = 20.0
+
 
 @dataclass
 class PartSpec:
@@ -1084,9 +1089,29 @@ def main() -> None:
         for i, section in enumerate(sections, start=1):
             parts[f"{name}_section_{i}_of_{len(sections)}"] = section
 
-    logger.info("Showing CAD model(s)")
-    for part in parts.values():
-        show(part)
+    # Show just the 436 MHz build, its sections stood side by side on the
+    # bed.  They are laid out rather than left stacked so both are visible at
+    # once instead of forming one 267 mm tower, and shown in a single call --
+    # show() replaces what is displayed, so calling it per part would leave
+    # only the last one on screen.
+    shown = {
+        name: part
+        for name, part in parts.items()
+        if name.startswith(SHOWN_PART_PREFIX)
+    }
+    pitch = (
+        max(part.bounding_box().size.X for part in shown.values())
+        + SHOWN_PART_GAP
+    )
+    logger.info("Showing {}", ", ".join(shown))
+    show(
+        *(
+            part.translate(
+                (i * pitch, 0.0, -part.bounding_box().min.Z)
+            )
+            for i, part in enumerate(shown.values())
+        )
+    )
 
     (
         export_folder := Path(__file__).parent.parent
