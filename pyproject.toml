@@ -45,6 +45,8 @@ ignore = [
     "TD003", # Ignore: Consider fixing the TODO. Obviously I'm gonna fix it.
     "FIX002", # Ignore: TODOs must have associated issues.
     "T201", # Allow print statements.
+
+    "D401", # Imperative mood docstrings.
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

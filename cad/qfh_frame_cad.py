@@ -213,6 +213,11 @@ class PartSpec:
     joint_tie_hole_z_offset: float = 8.0
     joint_tie_radius_fractions: tuple[float, ...] = (0.65,)
 
+    # A cone gusset standing on the hub plate, tapering from its full radius
+    # down to the blade core, that fills in the hard step where the blades
+    # narrow right above the hub -- the frame's most heavily loaded point.
+    base_boss_height: float = 15.0
+
     # --- Feed-throughs into the PCB housing -------------------------------
     # The mast sleeve's wall closes the PCB housing off from the tape runs
     # outside it.  Rather than open it up with a window, each bar gets one
@@ -880,6 +885,7 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
     # The hub lives entirely at and below z=0, while the blades run upward
     # from z=0, so fusing it in last cannot backfill any of its holes.
     p += _draw_hub(spec)
+    p += _base_boss(spec)
 
     return p
 
@@ -887,6 +893,15 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
 # ---------------------------------------------------------------------------
 # Splitting into printable sections
 # ---------------------------------------------------------------------------
+
+
+def _axis_cone(
+    *, z_bottom: float, r_bottom: float, r_top: float, height: float
+) -> bd.Part | bd.Compound:
+    """A cone on the axis, sitting on ``z_bottom`` and rising by ``height``."""
+    return bd.Part(None) + bd.Pos(Z=z_bottom + height / 2.0) * bd.Cone(
+        bottom_radius=r_bottom, top_radius=r_top, height=height
+    )
 
 
 def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
@@ -901,17 +916,36 @@ def _joint_boss(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
     r_small = spec.blade_core_thickness / 2.0
 
     p = bd.Part(None)
-    p += bd.Pos(Z=cut_z - spec.joint_boss_height_below / 2.0) * bd.Cone(
-        bottom_radius=r_small,
-        top_radius=r_big,
+    p += _axis_cone(
+        z_bottom=cut_z - spec.joint_boss_height_below,
+        r_bottom=r_small,
+        r_top=r_big,
         height=spec.joint_boss_height_below,
     )
-    p += bd.Pos(Z=cut_z + spec.joint_boss_height_above / 2.0) * bd.Cone(
-        bottom_radius=r_big,
-        top_radius=r_small,
+    p += _axis_cone(
+        z_bottom=cut_z,
+        r_bottom=r_big,
+        r_top=r_small,
         height=spec.joint_boss_height_above,
     )
     return p
+
+
+def _base_boss(spec: PartSpec) -> bd.Part | bd.Compound:
+    """Cone gusset from the top of the sleeve/hub up into the twist's base.
+
+    The hub plate is a full-diameter disc, while the blades immediately
+    above it narrow down to the thin core -- a hard step where the frame is
+    most loaded.  This cone fills that step in, tapering from the hub's full
+    radius at the bottom to the blade core at the top, exactly like a
+    joint boss's lower half.
+    """
+    return _axis_cone(
+        z_bottom=spec.hub_plate_thickness,
+        r_bottom=spec.hub_radius,
+        r_top=spec.blade_core_thickness / 2.0,
+        height=spec.base_boss_height,
+    )
 
 
 def _joint_pin_positions(
