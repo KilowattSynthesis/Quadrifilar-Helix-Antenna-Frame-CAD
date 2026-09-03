@@ -55,11 +55,14 @@ Taller frames do not fit a print bed, so ``qfh_antenna_frame_sections``
 cuts the frame into as few equal horizontal **sections** as will fit under
 ``max_print_height`` (default 200 mm, counting the balls that stand proud of
 each cut).  Locating pins are 3 mm **balls** sitting on the cut plane, half
-proud of the section below and half dished into the one above: a pair on the
-axis, inside a boss that also ties the two blades together, and more out on
-both blades' arms.  A ball reaches only its own radius above the plane, which
-is what lets pins go out on the arms at all -- a pin standing any real height
-there would twist straight out the side of the blade as the blade turns.
+proud of one section and half dished into the other: a pair on the axis,
+inside a boss that also ties the two blades together, and more out on both
+blades' arms.  By default the balls belong to the section *above* each cut,
+which leaves the section below with a dish that opens upward; the sections
+carrying balls want flipping on the print bed.  A ball reaches only its own
+radius clear of the plane, which is what lets pins go out on the arms at all
+-- a pin standing any real height there would twist straight out the side of
+the blade as the blade turns.
 Zip-tie anchor holes flank each cut further out, where they have the lever
 arm to resist bending.  Set ``max_print_height=None`` for one piece.
 
@@ -171,11 +174,19 @@ class PartSpec:
     joint_pin_offset: float = 5.0  # From the axis.
     # And more out on both blades' arms, as fractions of the arm's length.
     joint_pin_radius_fractions: tuple[float, ...] = (0.45, 0.8)
-    # A whisker taken off the top of every ball and socket.  A sphere's mesh
-    # collapses to a point at its poles, and the upper pole sits on the
-    # exposed dome, where that leaves a zero-area triangle and an STL that
-    # fails a watertight check.  Cutting the pole away removes it, and it
-    # gives the printed tip a real top layer instead of a point.
+    # Which side of a cut carries the balls.  With them on the section above
+    # (the default), the section below gets a dish that opens upward -- about
+    # the easiest feature there is to print -- while the balls themselves hang
+    # under the upper section's mating face, so that section wants flipping on
+    # the bed.  Set True to put the balls on the section below instead: they
+    # then point up, and the dish becomes a downward-opening cavity whose
+    # ceiling has to bridge.
+    joint_balls_on_lower_section: bool = False
+    # A whisker taken off the outer pole of every ball and socket.  A
+    # sphere's mesh collapses to a point at its poles, and the outer one
+    # sits on the exposed dome, where it leaves a zero-area triangle and an
+    # STL that fails a watertight check.  Cutting the pole away removes it,
+    # and gives the printed tip a real flat instead of a point.
     joint_pin_tip_flat: float = 0.15
 
     # Zip-tie anchors: a hole through each blade above and below the cut, out
@@ -889,20 +900,24 @@ def _joint_pins(
 ) -> bd.Part | bd.Compound:
     """Build the balls at one cut, or the sockets they seat into.
 
-    Each ball is centred on the cut plane, so half of it stands proud of the
-    section below and half is dished out of the section above.
+    Each ball is centred on the cut plane, so half of it stands proud of one
+    section and the matching half is dished out of the other.  Ball and socket
+    always use the same half, the one ``joint_balls_on_lower_section`` puts
+    the protruding dome in.
     """
     diameter = spec.joint_pin_diameter + (
         spec.joint_pin_clearance if socket else 0.0
     )
-
     radius = diameter / 2.0
-    # Trim the upper pole away (see joint_pin_tip_flat).  The lower one is
-    # buried in the section below, so it needs no such treatment.  Taking the
-    # same slice off ball and socket alike keeps the clearance between them.
-    cap = bd.Pos(Z=radius - spec.joint_pin_tip_flat + radius) * bd.Box(
-        4.0 * radius, 4.0 * radius, 2.0 * radius
-    )
+    sign = 1.0 if spec.joint_balls_on_lower_section else -1.0
+
+    # Trim the outer pole away (see joint_pin_tip_flat).  The inner one is
+    # buried in the section the feature belongs to, so it needs no such
+    # treatment.  Taking the same slice off ball and socket alike leaves the
+    # clearance between them untouched.
+    cap = bd.Pos(
+        Z=sign * (2.0 * radius - spec.joint_pin_tip_flat)
+    ) * bd.Box(4.0 * radius, 4.0 * radius, 2.0 * radius)
 
     p = bd.Part(None)
     for x, y in _joint_pin_positions(spec=spec, cut_z=cut_z):
@@ -978,11 +993,12 @@ def qfh_antenna_frame_sections(spec: PartSpec) -> list[bd.Part | bd.Compound]:
 
     # Balls straddle the cut plane, so unlike the boss and the tie holes they
     # cannot be applied before the split: each half belongs to one section
-    # only.  The section below a cut grows the balls, the one above is dished
-    # out to receive them.
+    # only.
+    ball_below = spec.joint_balls_on_lower_section
     for i, cut_z in enumerate(cut_zs):
-        sections[i] += _joint_pins(spec=spec, cut_z=cut_z, socket=False)
-        sections[i + 1] -= _joint_pins(spec=spec, cut_z=cut_z, socket=True)
+        male, female = (i, i + 1) if ball_below else (i + 1, i)
+        sections[male] += _joint_pins(spec=spec, cut_z=cut_z, socket=False)
+        sections[female] -= _joint_pins(spec=spec, cut_z=cut_z, socket=True)
 
     logger.info(
         "Split into {} sections at z = {}; tallest is {:.1f} mm "
@@ -992,6 +1008,15 @@ def qfh_antenna_frame_sections(spec: PartSpec) -> list[bd.Part | bd.Compound]:
         max(s.bounding_box().size.Z for s in sections),
         spec.max_print_height,
     )
+    if not ball_below:
+        logger.info(
+            "Balls are on the section above each cut, so they hang below "
+            "that section's mating face: print sections 2..{} flipped, or "
+            "the whole mating face is a {:.2f} mm overhang. Section 1 has "
+            "only an upward-opening dish and prints as modelled.",
+            len(sections),
+            spec.joint_pin_diameter / 2.0 - spec.joint_pin_tip_flat,
+        )
     return sections
 
 

@@ -51,8 +51,8 @@ giving the tape a 10 mm surface where it turns inboard.
 * **Printable sections**: anything taller than `max_print_height` (200 mm by
   default) is cut into as few equal horizontal sections as will fit, counting
   the balls that stand proud of each cut. Locating pins are 3 mm **balls**
-  sitting on the cut plane -- half proud of the section below, half dished
-  into the one above -- placed both on the axis and out on both blades' arms.
+  sitting on the cut plane -- half proud of one section, half dished into the
+  other -- placed both on the axis and out on both blades' arms.
   Balls self-centre as the joint closes, and reaching only their own radius
   above the plane is what lets pins go out on the arms at all: a pin standing
   any real height there would twist straight out the side of the blade. The
@@ -74,8 +74,14 @@ PCB pad -> wire through the feed-through -> underside of the bottom bar
 
 ### Assembly
 
-1. Print each section upright (as modelled, and exported sitting on the
-   bed). No supports needed.
+1. Print each section. The balls sit on the section above each cut, so the
+   bottom-most section prints as modelled -- it has only an upward-opening
+   dish -- while every section above it should be **flipped on the bed**, so
+   its balls point up. Printed the other way up its mating face is a 1.35 mm
+   overhang resting on ten ball tips. Set
+   `joint_balls_on_lower_section=True` to move the balls to the other side
+   instead, which lets every section print as modelled at the cost of a
+   bridged dish ceiling. No supports needed either way.
 2. Stack the sections: the balls drop into their sockets and pull the joint
    into line, and there is only one way they go together -- a blade is
    symmetric under a half turn about Z, so the other orientation the pins
