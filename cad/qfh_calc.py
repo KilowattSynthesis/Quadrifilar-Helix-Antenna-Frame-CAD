@@ -306,6 +306,15 @@ class QfhInputSpec:
     turns: Helix twist in fractions of a full turn (0.5 = 180°).
     num_wavelengths: Loop circumference expressed in wavelengths
         (1, 1.5, or 2).
+    empirical_tuning_factor: Linear scale applied to every conductor length,
+        to pull a built antenna onto frequency.  The calculator assumes a
+        bare conductor in free space; a real build sits on printed plastic
+        and uses flat foil tape rather than round wire, both of which slow
+        the wave down and drag resonance below the design frequency.  Set
+        this to ``f_measured / f_design`` from an S11 sweep of a previous
+        print: measuring low means the antenna is electrically too long, and
+        a factor below 1.0 shrinks it by the same ratio.  1.0 = uncorrected
+        textbook geometry.
 
     """
 
@@ -318,11 +327,15 @@ class QfhInputSpec:
     turns: float = 0.5  # Number of turns (0.25 / 0.5 / 0.75 / 1.0)
     # Loop circumference in wavelengths (normally 1):
     num_wavelengths: float = 1.0
+    # Measured-vs-design frequency correction (1.0 = none):
+    empirical_tuning_factor: float = 1.0
 
     def __post_init__(self) -> None:
         """Validate."""
         # Bending radius must be at least a tiny bit larger than diameter.
         assert self.wire_bending_radius > self.wire_diameter
+        # A sane correction is a few percent; anything wilder is a typo.
+        assert 0.5 < self.empirical_tuning_factor < 2.0  # noqa: PLR2004
 
     def to_pretty_str(self, prefix: str = "") -> str:
         """Return a human-readable representation of the input parameters.
@@ -337,6 +350,8 @@ class QfhInputSpec:
                 prefix + f"Diameter/height ratio: {self.ratio}",
                 prefix + f"Turns: {self.turns}",
                 prefix + f"Loop length: {self.num_wavelengths} wavelengths",
+                prefix
+                + f"Empirical tuning factor: {self.empirical_tuning_factor}",
             ]
         )
 
@@ -432,9 +447,14 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
     bcorr = bending_correction(qfh_input_spec.wire_bending_radius)
     optd = optimal_diameter(wavelc)
 
+    # The empirical factor scales every conductor length uniformly -- the
+    # bend corrections included -- so the whole antenna is a pure linear
+    # scale of the textbook one and its resonance moves by exactly 1/factor.
+    tune = qfh_input_spec.empirical_tuning_factor
+
     # Large loop: 1.026 x compensated wavelength
     total1 = wavelc * qfh_input_spec.num_wavelengths * 1.026
-    total1c = total1 + 4 * bcorr
+    total1c = (total1 + 4 * bcorr) * tune
     geo1 = _loop_geometry(
         total1c,
         qfh_input_spec.ratio,
@@ -445,7 +465,7 @@ def calculate_qfh(qfh_input_spec: QfhInputSpec) -> QfhResult:
 
     # Small loop: 0.975 x compensated wavelength
     total2 = wavelc * qfh_input_spec.num_wavelengths * 0.975
-    total2c = total2 + 4 * bcorr
+    total2c = (total2 + 4 * bcorr) * tune
     geo2 = _loop_geometry(
         total2c,
         qfh_input_spec.ratio,

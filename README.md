@@ -112,6 +112,21 @@ height, joint pin sizing, and so on. Set
 `mast_pipe_od=None` for antennas too small to straddle a pipe (the bundled
 913 MHz build is only ~46 mm across, so it has no sleeve).
 
+### Tuning to a measured build
+
+The calculator assumes bare conductor in free space. A real build runs foil
+tape over printed plastic, which slows the wave and drags resonance *below*
+the design frequency, so the first print of a new design lands low. Sweep
+S11, then set `empirical_tuning_factor = f_measured / f_design` in the
+`QfhInputSpec`: it scales every conductor length uniformly, so resonance
+moves up by exactly `1 / factor` and everything else about the geometry is
+unchanged.
+
+The bundled 436 MHz build measured **408 MHz** on its first (uncorrected)
+print -- 6.4% low -- so it now carries `empirical_tuning_factor = 408/436`
+(0.9358). That takes the large loop from 226.8 mm tall / 99.8 mm across to
+212.2 mm / 93.4 mm.
+
 ## See Also
 
 * Geometry Calculator: https://jcoppens.com/ant/qfh/calc.en.php

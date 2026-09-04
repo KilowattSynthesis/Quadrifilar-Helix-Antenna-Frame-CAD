@@ -1140,6 +1140,13 @@ def main() -> None:
                     frequency_hz=436.0e6,
                     wire_diameter=1.5,
                     wire_bending_radius=3.0,
+                    # Measured: the uncorrected (factor 1.0) print of this
+                    # design resonated at 408 MHz instead of 436 MHz, i.e.
+                    # 6.4% low, because the foil tape runs on printed
+                    # plastic rather than through free space.  Shrinking
+                    # every conductor length by 408/436 pushes resonance up
+                    # by the same ratio, onto 436 MHz.
+                    empirical_tuning_factor=408.0 / 436.0,
                 )
             )
         ),
