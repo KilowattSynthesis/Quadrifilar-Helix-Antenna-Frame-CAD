@@ -233,7 +233,7 @@ class PartSpec:
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
     # pipe); the hub then reduces to a plate carrying just the PCB bosses.
-    mast_pipe_od: float | None = 32.5  # 1.25" = 31.75 mm: PVC OD.
+    mast_pipe_od: float | None = 42.2  # 1-1/4" PVC pipe — OD = 1.660 in
     mast_bore_clearance: float = 0.4  # Diametral slip fit.
     mast_sleeve_wall: float = 8.0  # Doubled: this is what grips the mast.
     mast_sleeve_length: float = 50.0  # Hangs below the frame.
