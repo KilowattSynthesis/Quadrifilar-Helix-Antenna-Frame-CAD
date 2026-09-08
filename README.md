@@ -128,7 +128,7 @@ PCB pad -> wire through the feed-through -> underside of the bottom bar
 8. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
-Everything is parametric -- see `PartSpec` in `cad/qfh_frame_cad.py` for tape
+Everything is parametric -- see `PartSpec` in `cad/qfh_tape_frame_cad.py` for tape
 land width, tie hole spacing, mast diameter, standoff height, max print
 height, joint pin sizing, and so on. Set
 `mast_pipe_od=None` for antennas too small to straddle a pipe (the bundled
