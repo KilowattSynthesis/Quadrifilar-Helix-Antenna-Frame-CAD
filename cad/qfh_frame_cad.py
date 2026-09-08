@@ -47,11 +47,26 @@ At the bottom the frame carries a hub that does two jobs:
   holes plus an RF connector in the fourth quadrant, so one boss goes unused
   and the board can be fitted in any rotation.  The PCB hangs
   under the hub inside the sleeve bore, which the sleeve wall closes off
-  from the tape runs outside it.  Each of the four bars gets one 1.5 mm
-  2.5 mm **wire feed-through**, tucked just under the surface the tape runs
-  along: the tape ends outside and a short copper wire runs through to the
+  from the tape runs outside it.  Each of the four bars gets one
+  **wire feed-through**, tucked just under the surface the tape runs along:
+  the tape ends outside and a short copper wire carries on through to the
   board's pad, which is far easier to weatherproof than an open slot.  The
   board also sets how far the pipe can be pushed in.
+
+The whole hub is **lifted ``hub_rise`` up into the frame**, rather than
+hanging under it, and that is what makes each of those four wires a single
+straight horizontal run.  The tape is stuck to the outside of the frame, so
+its exposed face -- the face the wire is soldered to -- is ``tape_thickness``
+below the bar's underside; the wire lying on it puts its own axis half a wire
+below that again, and it holds that height through the feed-through (which is
+bored concentric with it) and on across the board.  Setting the board's top
+face there, and hanging it ``pcb_standoff_height`` under the hub, is what
+fixes where the hub goes.  So the wire never bends: it is soldered flat to
+the tape at one end and flat to the board at the other, and the standoff
+height is free to be whatever the parts on top of the board need.  The mast
+bore rises with the hub, taking a shallow bite out of the bottom of the
+blades where they cross the bore -- under the hub, well inboard of where any
+tape runs.
 
 Taller frames do not fit a print bed, so ``qfh_antenna_frame_sections``
 cuts the frame into as few equal horizontal **sections** as will fit under
@@ -131,6 +146,15 @@ class PartSpec:
     # the antenna is one full-width slab flush with the hub.
     tape_pad_thickness: float = 3.0
 
+    # Thickness of the conductor itself: the foil tape, adhesive and all, as
+    # it measures off the roll.  The tape is stuck to the *outside* of the
+    # frame, so its exposed face stands this far proud of the printed
+    # surface -- and that face is what the feed wire lies on, which is what
+    # makes this a mechanical dimension rather than a cosmetic one.  It sets
+    # the height of the whole wire run, and through it the height of the
+    # feed-throughs, the hub and the board.
+    tape_thickness: float = 0.9
+
     # --- Zip-tie holes -----------------------------------------------------
     tie_hole_diameter: float = 3.2  # Fits a standard 2.5 x 1.0 mm zip tie.
     # Distance from the blade's outer end face to the hole centre.  The tie
@@ -143,7 +167,14 @@ class PartSpec:
     # the corner and runs inboard.  Given as fractions along the bar's bare
     # span (from the hub, or from the axis at the top, out to the end).
     tie_hole_bar_radius_fractions: tuple[float, ...] = (0.35, 0.75)
-    tie_hole_bar_z: float = 8.0  # Height above bottom / below top.
+    # Height below the top face, and nominally the same above the bottom
+    # one -- but the bottom land grows with the hub, so the bottom holes are
+    # pushed up clear of it where they have to be; see
+    # ``tie_hole_bar_z_bottom``.
+    tie_hole_bar_z: float = 8.0
+    # Plastic kept between the top of the bottom land and the nearest edge of
+    # a bottom bar tie hole, when that hole is pushed up.
+    tie_hole_bar_land_gap: float = 1.5
 
     # --- Top tape crossover gap -------------------------------------------
     # The two loops are different heights, so at the top the taller blade
@@ -221,14 +252,27 @@ class PartSpec:
     # --- Feed-throughs into the PCB housing -------------------------------
     # The mast sleeve's wall closes the PCB housing off from the tape runs
     # outside it.  Rather than open it up with a window, each bar gets one
-    # small radial hole: the tape ends outside, and a short copper wire
-    # passes through to the board's pad.  A 1.5 mm hole is far easier to seal
-    # than an open slot, which is the point.
-    pcb_wire_hole_diameter: float = 2.5
-    # Material left between the frame underside -- the surface the tape runs
-    # along -- and the near edge of the hole.  The hole's depth is derived
-    # from this, so it stays put against that surface if the diameter changes.
-    pcb_wire_hole_edge_margin: float = 1.0
+    # small radial hole: the tape ends outside, and a short length of stiff
+    # copper wire carries on through to the board's pad.  A round hole is far
+    # easier to seal than an open slot, which is the point.
+    #
+    # That wire is dead straight and horizontal for its whole run: it lies on
+    # the exposed face of the tape, passes through the feed-through at that
+    # same height, and comes out lying on the top face of the board.  Both
+    # ends are then a straight wire soldered flat onto a flat surface, with
+    # nothing to bend or hold in place while the iron is on it.  Everything
+    # below follows from that -- the hole is centred on the wire, and the hub
+    # is lifted up into the frame (``hub_rise``) until the board's top face
+    # comes up to meet the wire.
+    feed_wire_diameter: float = 1.5
+    # Diametral clearance of the feed-through around that wire.  Half of it
+    # is also what the hole eats out of the roof between itself and the frame
+    # underside, so it trades threading ease against that roof.
+    feed_wire_hole_clearance: float = 0.7
+    # Least roof allowed between the feed-through and the frame underside the
+    # tape runs along.  Below this the hole is breaking out into the tape
+    # land rather than passing under it.
+    pcb_wire_hole_roof_min: float = 0.4
 
     # --- Mast sleeve -------------------------------------------------------
     # Set to None for no mast sleeve (e.g. antennas too small to straddle a
@@ -263,7 +307,12 @@ class PartSpec:
     pcb_screw_circle_diameter: float = 24.0
     pcb_screw_angles_deg: tuple[float, ...] = (45.0, 135.0, 225.0, 315.0)
     pcb_boss_diameter: float = 7.0
-    pcb_standoff_height: float = 6.0  # Gap from frame underside to PCB.
+    # Gap from the hub's underside down to the board's top face.  This does
+    # not decide where the board sits -- the wire run fixes that
+    # (``pcb_top_z``) -- it lifts the *hub* off the board instead, by
+    # ``hub_rise``.  So it is free to be whatever the tallest part on top of
+    # the board, and the screw bosses, actually need.
+    pcb_standoff_height: float = 4.5
     pcb_screw_hole_diameter: float = 2.7  # M3 thread-forming into plastic.
     pcb_screw_hole_depth: float = 8.0
 
@@ -302,11 +351,18 @@ class PartSpec:
             msg = "Zip-tie holes are too close to the blade's end face."
             raise ValueError(msg)
 
-        if self.bottom_land_thickness >= self.tie_hole_bar_z:
+        # The bottom bar's tie holes step up out of the bottom land's way by
+        # themselves, so that is not an error -- but they still have to stay
+        # below the top bar's, or there is no plain blade left between them.
+        min_height = min(
+            self.qfh.large_loop.height, self.qfh.small_loop.height
+        )
+        if self.tie_hole_bar_z_bottom >= min_height - self.tie_hole_bar_z:
             msg = (
-                f"Tape pads ({self.bottom_land_thickness:.1f} mm) reach "
-                f"the bar zip-tie holes at z={self.tie_hole_bar_z:.1f} mm, "
-                f"so a tie could not wrap around them."
+                f"Bottom bar tie holes, pushed up to "
+                f"z={self.tie_hole_bar_z_bottom:.1f} mm to clear the "
+                f"{self.bottom_land_thickness:.1f} mm bottom land, meet the "
+                f"top ones on the {min_height:.1f} mm blade."
             )
             raise ValueError(msg)
 
@@ -345,6 +401,17 @@ class PartSpec:
             self.pcb_standoff_height + self.hub_plate_thickness
         ):
             msg = "PCB screw holes would break through the top of the hub."
+            raise ValueError(msg)
+
+        if self.hub_rise < 0.0:
+            msg = (
+                f"pcb_standoff_height ({self.pcb_standoff_height:.1f} mm) is "
+                f"under the tape plus feed wire "
+                f"({self.tape_thickness + self.feed_wire_diameter:.1f} mm), "
+                f"so the hub would have to drop below the frame's underside "
+                f"to put the board where the straight wire lands. Use a "
+                f"taller standoff."
+            )
             raise ValueError(msg)
 
     def _validate_sections(self) -> None:
@@ -397,10 +464,11 @@ class PartSpec:
         for cut_z in self.section_cut_heights:
             boss_lo = cut_z - self.joint_boss_height_below
             boss_hi = cut_z + self.joint_boss_height_above
-            if boss_lo <= self.hub_plate_thickness:
+            if boss_lo <= self.hub_top_z:
                 msg = (
                     f"A section cut at z={cut_z:.1f} mm puts its joint into "
-                    f"the hub. Adjust max_print_height."
+                    f"the hub (top at z={self.hub_top_z:.1f} mm). Adjust "
+                    f"max_print_height."
                 )
                 raise ValueError(msg)
             if boss_lo < window_hi and boss_hi > window_lo:
@@ -416,19 +484,14 @@ class PartSpec:
         if self.mast_pipe_od is None:
             return  # No sleeve wall between the tape and the board.
 
-        if self.pcb_wire_hole_edge_margin <= 0.0:
+        if self.pcb_wire_hole_roof < self.pcb_wire_hole_roof_min:
             msg = (
-                "Feed-through would break through the frame underside that "
-                "the tape runs along."
-            )
-            raise ValueError(msg)
-
-        hole_bottom = self.pcb_wire_hole_z + self.pcb_wire_hole_diameter / 2.0
-        if hole_bottom >= self.pcb_standoff_height:
-            msg = (
-                f"Feed-through reaches z=-{hole_bottom:.1f} mm, at or below "
-                f"the board itself (z=-{self.pcb_standoff_height:.1f} mm); "
-                f"it must come through above the board."
+                f"Feed-through leaves only {self.pcb_wire_hole_roof:.2f} mm "
+                f"of roof under the frame underside the tape runs along "
+                f"(want {self.pcb_wire_hole_roof_min:.2f} mm). The roof is "
+                f"the tape's own thickness "
+                f"({self.tape_thickness:.2f} mm) less half the hole's "
+                f"clearance, so it takes thicker tape or a tighter hole."
             )
             raise ValueError(msg)
 
@@ -444,11 +507,86 @@ class PartSpec:
         return (self.pcb_screw_circle_diameter + self.pcb_boss_diameter) / 2.0
 
     @property
+    def feed_wire_axis_z(self) -> float:
+        """Height of the feed wire's axis -- the same the whole way along.
+
+        The wire lies on the exposed face of the tape, which is
+        ``tape_thickness`` below the frame's underside (z=0) because the tape
+        is stuck on the outside, so the wire's axis is one wire radius below
+        that again.  It holds this height out along the bar, through the
+        feed-through, and on across the board.
+        """
+        return -(self.tape_thickness + self.feed_wire_diameter / 2.0)
+
+    @property
+    def pcb_top_z(self) -> float:
+        """Height of the board's top face.
+
+        The wire comes off the tape at ``feed_wire_axis_z`` and has to finish
+        lying flat on the board, so the board's face is one wire radius below
+        that axis -- the tape plus the whole wire below the frame underside.
+        The wire run fixes this; the hub is what moves to suit it.
+        """
+        return self.feed_wire_axis_z - self.feed_wire_diameter / 2.0
+
+    @property
+    def hub_rise(self) -> float:
+        """How far the whole hub is lifted up into the frame.
+
+        The board hangs ``pcb_standoff_height`` under the hub's underside and
+        its top face has to land on ``pcb_top_z``, so the hub's underside
+        ends up this far *above* the frame's own underside.  The mast bore
+        rises with it, which is what takes the mast mounting up inside the
+        antenna rather than leaving it all hanging below.
+        """
+        return self.pcb_top_z + self.pcb_standoff_height
+
+    @property
+    def hub_top_z(self) -> float:
+        """Top face of the hub plate."""
+        return self.hub_rise + self.hub_plate_thickness
+
+    @property
+    def pcb_wire_hole_diameter(self) -> float:
+        """Bore of the feed-through: the feed wire plus its clearance."""
+        return self.feed_wire_diameter + self.feed_wire_hole_clearance
+
+    @property
+    def pcb_wire_hole_roof(self) -> float:
+        """Plastic left between the feed-through and the frame underside.
+
+        The hole is centred on the wire, and the wire's own top face is the
+        tape's thickness below the surface, so the roof is that thickness
+        less the half-clearance the hole adds above the wire.
+        """
+        return -self.feed_wire_axis_z - self.pcb_wire_hole_diameter / 2.0
+
+    @property
+    def tie_hole_bar_z_bottom(self) -> float:
+        """Height of the bottom bar's tie holes.
+
+        ``tie_hole_bar_z`` above the underside, unless the bottom land --
+        which follows the raised hub's top face up -- would reach them, in
+        which case they step up clear of it instead.
+        """
+        return max(
+            self.tie_hole_bar_z,
+            self.bottom_land_thickness
+            + self.tie_hole_diameter / 2.0
+            + self.tie_hole_bar_land_gap,
+        )
+
+    @property
     def frame_z_min(self) -> float:
-        """Lowest z of the whole frame: the mast sleeve's open end."""
+        """Lowest z of the whole frame.
+
+        The mast sleeve's open end where there is a sleeve; otherwise the
+        board's top face, which the PCB bosses reach down to whether or not
+        there is one.
+        """
         if self.mast_pipe_od is None:
-            return 0.0
-        return -self.mast_sleeve_length
+            return self.pcb_top_z
+        return self.hub_rise - self.mast_sleeve_length
 
     @property
     def frame_z_max(self) -> float:
@@ -475,13 +613,6 @@ class PartSpec:
         return tuple(z_lo + (z_hi - z_lo) * k / n for k in range(1, n))
 
     @property
-    def pcb_wire_hole_z(self) -> float:
-        """Depth of the feed-through's axis below the frame underside."""
-        return (
-            self.pcb_wire_hole_edge_margin + self.pcb_wire_hole_diameter / 2.0
-        )
-
-    @property
     def sleeve_mid_radius(self) -> float:
         """Mid-wall radius of the mast sleeve."""
         return (self.mast_bore_radius + self.hub_radius) / 2.0
@@ -496,10 +627,11 @@ class PartSpec:
         """Thickness of the full-width land along the bottom of each blade.
 
         Taken up to the outside top of the PCB enclosure -- the hub plate's
-        upper face -- so the base of the antenna is one solid full-width slab
-        flush with the hub, rather than a thin land on a thin core.
+        upper face, which the hub's rise carries up with it -- so the base of
+        the antenna stays one solid full-width slab flush with the hub,
+        rather than a thin land on a thin core.
         """
-        return max(self.tape_pad_thickness, self.hub_plate_thickness)
+        return max(self.tape_pad_thickness, self.hub_top_z)
 
     @property
     def top_tape_gap_bridge(self) -> float:
@@ -703,7 +835,10 @@ def _draw_twisted_blade(
     # tie can only wrap outboard of it; at the top the bar is bare.
     r_out = half_len - spec.tie_hole_inset
     bar_spans = {
-        spec.tie_hole_bar_z: (spec.hub_radius + spec.tie_hole_inset, r_out),
+        spec.tie_hole_bar_z_bottom: (
+            spec.hub_radius + spec.tie_hole_inset,
+            r_out,
+        ),
         loop_height - spec.tie_hole_bar_z: (0.0, r_out),
     }
     for z, (r_lo, r_hi) in bar_spans.items():
@@ -750,23 +885,26 @@ def _top_tape_gap(
 
 
 def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
-    """Mast sleeve + hub plate + balun-PCB bosses, all at/below the bottom.
+    """Mast sleeve + hub plate + balun-PCB bosses, hung off ``hub_rise``.
 
-    The hub plate (z = 0 .. hub_plate_thickness) ties the two bottom bars
-    together and closes off the 45 deg gaps.  The sleeve, if any, hangs below
-    z = 0 and slides over the mast pipe.  The PCB bosses hang below z = 0 too,
-    *inside* the sleeve bore -- so they have to be added after the bore is
-    cut, and the PCB itself becomes the mast pipe's insertion depth stop.
+    The whole assembly is lifted ``hub_rise`` above the frame's underside, up
+    inside the antenna, so that the board -- hanging its standoff below the
+    hub -- comes up to where the straight feed wire runs.  The hub plate
+    (z = hub_rise .. hub_top_z) ties the two bottom bars together and closes
+    off the 45 deg gaps; the sleeve, if any, hangs below it and slides over
+    the mast pipe.  The PCB bosses hang under the plate *inside* the sleeve
+    bore -- so they have to be added after the bore is cut, and the PCB
+    itself becomes the mast pipe's insertion depth stop.
     """
     outer_r = spec.hub_radius
     has_sleeve = spec.mast_pipe_od is not None
+    rise = spec.hub_rise
 
     p = bd.Part(None)
 
-    # Hub plate, sitting on top of z=0 so its underside is flush with the
-    # bottom bars (the tape runs along that flat underside).  It also caps
-    # the top of the bore, which is what the PCB bosses hang from.
-    p += bd.Pos(Z=spec.hub_plate_thickness / 2.0) * bd.Cylinder(
+    # Hub plate.  Its underside is what the PCB bosses hang from, and it caps
+    # the top of the bore -- both of which ride up with ``rise``.
+    p += bd.Pos(Z=rise + spec.hub_plate_thickness / 2.0) * bd.Cylinder(
         radius=outer_r, height=spec.hub_plate_thickness
     )
 
@@ -774,12 +912,12 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
         bore_r = spec.mast_bore_radius
         r_mid = spec.sleeve_mid_radius
 
-        p += bd.Pos(Z=-spec.mast_sleeve_length / 2.0) * bd.Cylinder(
+        p += bd.Pos(Z=rise - spec.mast_sleeve_length / 2.0) * bd.Cylinder(
             radius=outer_r, height=spec.mast_sleeve_length
         )
 
         # Bore for the mast pipe (also the space the PCB hangs in).
-        p -= bd.Pos(Z=-spec.mast_sleeve_length / 2.0) * bd.Cylinder(
+        p -= bd.Pos(Z=rise - spec.mast_sleeve_length / 2.0) * bd.Cylinder(
             radius=bore_r, height=spec.mast_sleeve_length
         )
 
@@ -790,7 +928,7 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
         for row, z_from_end in enumerate(
             spec.mast_screw_rows_z_from_sleeve_end
         ):
-            z_screw = -(spec.mast_sleeve_length - z_from_end)
+            z_screw = rise - (spec.mast_sleeve_length - z_from_end)
             row_offset = 45.0 + (step / 2.0) * (row % 2)
             for i in range(spec.mast_screw_count):
                 # Offset off the bar axes, clear of the tape runs above.
@@ -806,8 +944,9 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                     .translate((*_polar(r_mid, ang), z_screw))
                 )
 
-        # One small feed-through per bar: the tape stops outside the
-        # sleeve and a short copper wire runs through to the board's pad.
+        # One small feed-through per bar, centred on the feed wire so the
+        # wire runs straight through it: the tape stops outside the sleeve,
+        # and the wire carries on at that same height to the board's pad.
         for ang in BAR_ANGLES_DEG:
             p -= (
                 bd.Cylinder(
@@ -816,14 +955,15 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                     rotation=(0, 90, 0),  # Axis along X, radial once rotated.
                 )
                 .rotate(bd.Axis.Z, ang)
-                .translate((*_polar(r_mid, ang), -spec.pcb_wire_hole_z))
+                .translate((*_polar(r_mid, ang), spec.feed_wire_axis_z))
             )
 
     # PCB standoff bosses, hanging below the hub underside, inside the bore.
+    # They reach down from z=rise to the board's top face.
     for ang in spec.pcb_screw_angles_deg:
         p += bd.Pos(
             *_polar(spec.pcb_screw_circle_diameter / 2.0, ang),
-            Z=-spec.pcb_standoff_height / 2.0,
+            Z=rise - spec.pcb_standoff_height / 2.0,
         ) * bd.Cylinder(
             radius=spec.pcb_boss_diameter / 2.0,
             height=spec.pcb_standoff_height,
@@ -833,7 +973,7 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
     for ang in spec.pcb_screw_angles_deg:
         p -= bd.Pos(
             *_polar(spec.pcb_screw_circle_diameter / 2.0, ang),
-            Z=-spec.pcb_standoff_height + spec.pcb_screw_hole_depth / 2.0,
+            Z=spec.pcb_top_z + spec.pcb_screw_hole_depth / 2.0,
         ) * bd.Cylinder(
             radius=spec.pcb_screw_hole_diameter / 2.0,
             height=spec.pcb_screw_hole_depth,
@@ -882,8 +1022,17 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Part | bd.Compound:
     p += large_blade
     p += small_blade
 
-    # The hub lives entirely at and below z=0, while the blades run upward
-    # from z=0, so fusing it in last cannot backfill any of its holes.
+    # The bore now reaches up past z=0, into the blades' own bottom land,
+    # and a union cannot re-open what the blades have already filled -- so
+    # clear the bore out of them before the hub (whose PCB bosses stand in
+    # that bore) is fused in.  Everything else the hub subtracts sits below
+    # z=0, where the blades never were.
+    if spec.mast_pipe_od is not None and spec.hub_rise > 0.0:
+        bore_h = spec.hub_rise - spec.frame_z_min
+        p -= bd.Pos(Z=spec.frame_z_min + bore_h / 2.0) * bd.Cylinder(
+            radius=spec.mast_bore_radius, height=bore_h
+        )
+
     p += _draw_hub(spec)
     p += _base_boss(spec)
 
@@ -941,7 +1090,7 @@ def _base_boss(spec: PartSpec) -> bd.Part | bd.Compound:
     joint boss's lower half.
     """
     return _axis_cone(
-        z_bottom=spec.hub_plate_thickness,
+        z_bottom=spec.hub_top_z,
         r_bottom=spec.hub_radius,
         r_top=spec.blade_core_thickness / 2.0,
         height=spec.base_boss_height,

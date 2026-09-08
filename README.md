@@ -20,8 +20,9 @@ than a plain 10 mm slab. The flare only widens the blade radially, so the top
 and bottom of every blade is a full-width land across its whole length,
 giving the tape a 10 mm surface where it turns inboard. The bottom land is
 the thicker of the two -- it runs up to the outside top of the PCB enclosure
-(6 mm), so the base of the antenna is one solid full-width slab flush with
-the hub, which is where the frame carries the most load.
+(8.1 mm: the 6 mm hub plate, raised by the 2.1 mm `hub_rise` below it), so
+the base of the antenna is one solid full-width slab flush with the hub,
+which is where the frame carries the most load.
 
 * **The conductor is foil tape**, stuck to the flat outer end faces of the
   blades. There are no wire channels to thread. Each blade end face sits
@@ -47,10 +48,27 @@ the hub, which is where the frame carries the most load.
   in any of the four rotations. The board hangs under the hub inside the
   sleeve bore, and doubles as the mast pipe's insertion depth stop.
 * **Wire feed-throughs**: the sleeve wall closes the PCB housing off from
-  the tape runs outside it, so each of the four bars gets a single 2.5 mm
-  hole, its upper edge 1 mm below the surface the tape runs along. The tape
-  ends outside and a short copper wire passes through to the board's pad --
-  much easier to weatherproof than an open slot.
+  the tape runs outside it, so each of the four bars gets a single hole,
+  bored to the feed wire plus 0.7 mm (2.2 mm for the stock 1.5 mm wire). The
+  tape ends outside and a short copper wire passes through to the board's
+  pad -- much easier to weatherproof than an open slot.
+* **Straight feed wires**, which is what sets the hub's height. The tape is
+  stuck to the *outside* of the frame, so its exposed face -- the one the
+  wire solders to -- sits `tape_thickness` (0.9 mm) below the bar's
+  underside. A `feed_wire_diameter` (1.5 mm) wire lying on that face has its
+  axis 1.65 mm below the underside, and it keeps that height the whole way:
+  the feed-through is bored concentric with it, and the board's top face is
+  set one wire radius lower again, at 2.4 mm below the underside, so the
+  wire arrives lying flat on the board. Nothing to bend, nothing to hold
+  while the iron is on it -- a straight wire soldered flat at both ends.
+* **Raised hub**: the board's height is fixed by that wire run, so
+  `pcb_standoff_height` (4.5 mm) lifts the *hub* rather than lowering the
+  board. The whole hub -- plate, sleeve, bore and bosses -- rises
+  `hub_rise` = 2.1 mm up into the frame. That leaves the standoff free to be
+  whatever the tallest part on top of the board needs, and takes the mast
+  mounting up inside the antenna instead of leaving it all hanging beneath.
+  The bore rises with it and takes a 2.1 mm bite out of the bottom of the
+  blades where they cross it -- under the hub, well inboard of any tape.
 
 * **Printable sections**: anything taller than `max_print_height` (200 mm by
   default) is cut into as few equal horizontal sections as will fit, counting
@@ -97,12 +115,16 @@ PCB pad -> wire through the feed-through -> underside of the bottom bar
 4. Pass the shorter loop's top tape through the crossover window in the
    taller blade.
 5. Thread a zip tie through each hole, over the tape, and cinch.
-6. End each tape run outside the sleeve and solder a short copper wire to
-   it, passed through that bar's 2.5 mm feed-through into the PCB housing.
+6. End each tape run outside the sleeve and solder a short 1.5 mm copper
+   wire to it, passed through that bar's feed-through into the PCB housing.
+   The wire is straight: it lies flat on the tape, runs level through the
+   hole, and comes out level with the board's top face.
 7. Fit the balun PCB **rotated 45 deg to the frame's bars**, so its X-shaped
    pads line up with the four tape ends. Three M3 screws from below thread
    into the bosses; the fourth boss has no matching hole and stays empty.
-   Solder the four wires to the pads.
+   With the board pulled tight against its standoffs, each of the four wires
+   is already lying flat on the board -- solder them to the pads as they
+   sit.
 8. Slide the frame onto the PVC mast until the pipe meets the PCB, then drive
    the three mast screws.
 
