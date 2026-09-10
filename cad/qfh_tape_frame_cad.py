@@ -1282,7 +1282,8 @@ def main() -> None:
     specs = {
         # 436 MHz: ~100 mm across, so it straddles a 1.5 in PVC mast.  At
         # 267 mm tall it does not fit a print bed, so it comes out in two
-        # sections that pin and zip-tie together.
+        # sections that pin and zip-tie together, alongside an uncut
+        # single-unit render of the whole frame.
         "QFH_Antenna_436_MHz": PartSpec(
             qfh=calculate_qfh(
                 QfhInputSpec(
@@ -1318,24 +1319,32 @@ def main() -> None:
     }
 
     parts: dict[str, bd.Part | bd.Compound | bd.Solid] = {}
+    shown_names: list[str] = []
     for name, spec in specs.items():
         sections = qfh_antenna_frame_sections(spec)
         if len(sections) == 1:
             parts[name] = sections[0]
+            if name.startswith(SHOWN_PART_PREFIX):
+                shown_names.append(name)
             continue
+
+        # Also emit the frame as one uncut unit.  It is very tall.
+        parts[name] = qfh_antenna_frame(spec)
+
         for i, section in enumerate(sections, start=1):
-            parts[f"{name}_section_{i}_of_{len(sections)}"] = section
+            section_name = f"{name}_section_{i}_of_{len(sections)}"
+            parts[section_name] = section
+            if name.startswith(SHOWN_PART_PREFIX):
+                shown_names.append(section_name)
 
     # Show just the 436 MHz build, its sections stood side by side on the
     # bed.  They are laid out rather than left stacked so both are visible at
     # once instead of forming one 267 mm tower, and shown in a single call --
     # show() replaces what is displayed, so calling it per part would leave
-    # only the last one on screen.
-    shown = {
-        name: part
-        for name, part in parts.items()
-        if name.startswith(SHOWN_PART_PREFIX)
-    }
+    # only the last one on screen.  The uncut single unit is exported but not
+    # shown: it is the same geometry at full height, and would dwarf the
+    # sections beside it.
+    shown = {name: parts[name] for name in shown_names}
     pitch = (
         max(part.bounding_box().size.X for part in shown.values())
         + SHOWN_PART_GAP
