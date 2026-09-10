@@ -9,6 +9,9 @@ wind the way the requested polarization needs (RHCP is a left-hand helix).
 Its section is thin (``blade_core_thickness``) for most of its
 length and flares out over the last ``tape_land_flare_length`` at each end to
 the full ``tape_land_width``, so the material goes where the tape needs it.
+The flare is widened by the helix angle (see ``_helix_land_chord``) so the
+land measures ``tape_land_width`` across the tape's own path, not across the
+horizontal section.
 The flare only widens the blade radially, so the top and bottom of every
 blade is a full-width land instead, giving the tape something to sit on where
 it turns inboard.  The bottom land is the thicker of the two: it runs up to
@@ -108,6 +111,9 @@ BAR_ANGLES_DEG = (0.0, 90.0, 180.0, 270.0)
 
 # Which build ``main`` puts in the viewer, and how far apart its sections are
 # stood.  Everything is still exported; this only picks what is displayed.
+# Convergence tolerance (mm) for the helical land-chord solve below.
+_CHORD_SOLVE_TOL = 1e-9
+
 SHOWN_PART_PREFIX = "QFH_Antenna_436_MHz"
 SHOWN_PART_GAP = 20.0
 
@@ -692,26 +698,84 @@ def _tie_hole(
     )
 
 
-def _blade_section(*, loop_diameter: float, spec: PartSpec) -> bd.Face:
+def _helix_land_chord(
+    *,
+    loop_diameter: float,
+    loop_height: float,
+    turns: float,
+    land_width: float,
+) -> float:
+    """Chord width of a twisting end face that presents ``land_width``.
+
+    The blade's end faces are cut by the *horizontal* section, so their width
+    is a chord measured in the XY plane.  The tape, though, runs up them
+    along the helix, and measures its land perpendicular to its own path.
+    Those two are not the same: the helix leans over by its helix angle
+    ``alpha``, and the face is foreshortened by ``cos(alpha)`` as the tape
+    crosses it.  At the default 0.44 diameter/height ratio the helix leans
+    nearly 35 deg, so a 10 mm chord presents only 8.2 mm to the tape -- the
+    tape overhangs its land by nearly a millimetre on each side, all the way
+    up both helical runs.
+
+    So the chord is scaled up by 1/cos(alpha) to put ``land_width`` back
+    under the tape.  Both the radius the corners sweep and the angle they
+    subtend depend on the chord itself, so this is solved by iteration
+    rather than in closed form; it converges in a handful of rounds.
+
+    The flat top and bottom lands need no such correction -- tape crosses
+    those square -- so they stay at ``land_width``.
+    """
+    half_len = loop_diameter / 2.0
+    twist_rate = 2.0 * math.pi * abs(turns) / loop_height  # rad per mm of z.
+
+    def presented_width(chord: float) -> float:
+        """What a face of this chord actually offers the tape, across it."""
+        # The face's two long edges are helices through the section's outer
+        # corners: same radius, a fixed angle apart.  Unroll that cylinder
+        # and they are parallel lines, so the perpendicular distance is the
+        # arc between them foreshortened by the helix angle.
+        corner_radius = math.hypot(half_len, chord / 2.0)
+        arc = corner_radius * 2.0 * math.atan((chord / 2.0) / half_len)
+        alpha = math.atan(twist_rate * corner_radius)
+        return arc * math.cos(alpha)
+
+    chord = land_width
+    for _ in range(50):
+        presented = presented_width(chord)
+        if abs(presented - land_width) < _CHORD_SOLVE_TOL:
+            break
+        chord *= land_width / presented
+    return chord
+
+
+def _blade_section(
+    *,
+    loop_diameter: float,
+    spec: PartSpec,
+    core_thickness: float,
+    end_thickness: float,
+) -> bd.Face:
     r"""Build the 2D profile that gets twisted up to make one blade.
 
     A thin core that flares out at both ends, so material is spent only where
-    it earns its place: the full ``tape_land_width`` appears at the outer end
-    faces, where the foil tape sticks, and the long middle stays down at
-    ``blade_core_thickness``::
+    it earns its place: the full tape land appears at the outer end faces,
+    where the foil tape sticks, and the long middle stays down at
+    ``core_thickness``::
 
         +--_                              _--+   <-- tape land, full width
         |    \____________________________/    |
         |     ____________________________     |   <-- thin core
         +--_/                            \_--+
 
-    Note that the flat top and bottom faces, where the tape turns inboard
-    toward the PCB, are only as wide as the core -- tape running along them
-    overhangs a little.
+    ``end_thickness`` is the land's chord, which is wider than the land the
+    tape sees -- see ``_helix_land_chord``.  The same profile serves for the
+    thin core and for the top/bottom pads, which differ only in how thick
+    their middle is, so the end faces run flush from one into the next
+    instead of stepping where they meet.
     """
     half_len = loop_diameter / 2.0
-    t_end = spec.tape_land_width / 2.0
-    t_core = spec.blade_core_thickness / 2.0
+    t_end = end_thickness / 2.0
+    t_core = core_thickness / 2.0
     x_core = half_len - spec.tape_land_flare_length
 
     section = bd.Polygon(
@@ -727,6 +791,49 @@ def _blade_section(*, loop_diameter: float, spec: PartSpec) -> bd.Face:
     ).face()
     assert section is not None
     return section
+
+
+def _blade_sections(
+    *,
+    loop_diameter: float,
+    loop_height: float,
+    turns: float,
+    spec: PartSpec,
+) -> tuple[bd.Face, bd.Face]:
+    """The (pad, core) profiles for one blade, sharing the same flared ends.
+
+    Both are cut to the same end chord, so the end faces run flush from the
+    core into the pads instead of stepping where they meet; the pads are
+    simply full-width through the middle as well, for the tape's run inboard
+    across the top and bottom.
+    """
+    end_thickness = _helix_land_chord(
+        loop_diameter=loop_diameter,
+        loop_height=loop_height,
+        turns=turns,
+        land_width=spec.tape_land_width,
+    )
+    logger.debug(
+        "Blade D={:.1f} mm: helical land chord {:.2f} mm, to present the "
+        "full {:.1f} mm across the helix",
+        loop_diameter,
+        end_thickness,
+        spec.tape_land_width,
+    )
+    return (
+        _blade_section(
+            loop_diameter=loop_diameter,
+            spec=spec,
+            core_thickness=spec.tape_land_width,
+            end_thickness=end_thickness,
+        ),
+        _blade_section(
+            loop_diameter=loop_diameter,
+            spec=spec,
+            core_thickness=spec.blade_core_thickness,
+            end_thickness=end_thickness,
+        ),
+    )
 
 
 def _twisted_segment(
@@ -778,9 +885,18 @@ def _draw_twisted_blade(
     # face-to-face union -- overlapping a pad onto the core instead makes
     # their end faces touch tangentially, which is what turns the boolean
     # degenerate.
-    pad_section = bd.Rectangle(loop_diameter, spec.tape_land_width).face()
-    assert pad_section is not None
-    core_section = _blade_section(loop_diameter=loop_diameter, spec=spec)
+    #
+    # All three carry the same flared ends, sized so the tape gets its full
+    # land across a face it crosses at the helix angle.  The pads differ only
+    # in being full-width through the middle as well, for the tape's inboard
+    # run, so the end faces stay flush through both joints rather than
+    # stepping out by the width correction where core meets pad.
+    pad_section, core_section = _blade_sections(
+        loop_diameter=loop_diameter,
+        loop_height=loop_height,
+        turns=turns,
+        spec=spec,
+    )
     core_top = loop_height - pad_t
 
     def segment(section: bd.Face, z_start: float, z_end: float) -> bd.Solid:
