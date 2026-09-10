@@ -140,3 +140,11 @@ The bundled 436 MHz build measured **408 MHz** on its first (uncorrected)
 print -- 6.4% low -- so it now carries `empirical_tuning_factor = 408/436`
 (0.9358). That takes the large loop from 226.8 mm tall / 99.8 mm across to
 212.2 mm / 93.4 mm.
+
+## Polarization
+
+Set `antenna_polarization` on `QfhInputSpec` to `"RHCP"` or `"LHCP"`; it winds
+the frame the right way round. A QFH radiates the opposite sense to its
+physical winding, so **RHCP is a left-hand helix** and LHCP is a right-hand
+one. The shipped models are `"LHCP"` (right-hand helix), matching the hardware
+that was printed and tuned.

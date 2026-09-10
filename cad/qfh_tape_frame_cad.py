@@ -4,7 +4,9 @@ Design summary
 --------------
 Each of the two bifilar loops is a single **twisted blade**: a slab ``rad``
 long, extruded from z=0 to the loop height while rotating ``turns``
-revolutions.  Its section is thin (``blade_core_thickness``) for most of its
+revolutions.  The twist follows ``QfhInputSpec.signed_turns``, so the blades
+wind the way the requested polarization needs (RHCP is a left-hand helix).
+Its section is thin (``blade_core_thickness``) for most of its
 length and flares out over the last ``tape_land_flare_length`` at each end to
 the full ``tape_land_width``, so the material goes where the tape needs it.
 The flare only widens the blade radially, so the top and bottom of every
@@ -763,7 +765,7 @@ def _draw_twisted_blade(
     The blade's two end faces are the helical tape lands; they sit at
     +/-``loop_diameter``/2, i.e. exactly on the RF design radius.
     """
-    turns = spec.qfh.input_spec.turns
+    turns = spec.qfh.input_spec.signed_turns
     half_len = loop_diameter / 2.0
     pad_t = spec.tape_pad_thickness
     bottom_t = spec.bottom_land_thickness
@@ -871,7 +873,7 @@ def _top_tape_gap(
     z_mid = (z_bottom + z_top) / 2.0
 
     # Follow the taller blade's twist at the window's mid-height.
-    angle_deg = 360.0 * spec.qfh.input_spec.turns * z_mid / blade_height
+    angle_deg = 360.0 * spec.qfh.input_spec.signed_turns * z_mid / blade_height
 
     return (
         bd.Box(
@@ -1105,7 +1107,7 @@ def _joint_pin_positions(
     A pair flanking the axis inside the boss, plus more out on both blades'
     arms, each at that blade's own angle where the cut crosses it.
     """
-    turns = spec.qfh.input_spec.turns
+    turns = spec.qfh.input_spec.signed_turns
     positions: list[tuple[float, float]] = []
 
     # The central pair, laid along the large blade.
@@ -1185,7 +1187,7 @@ def _joint_tie_holes(*, spec: PartSpec, cut_z: float) -> bd.Part | bd.Compound:
     A tie threaded through the hole below the cut and the one above wraps the
     blade between them, so cinching it pulls the joint shut.
     """
-    turns = spec.qfh.input_spec.turns
+    turns = spec.qfh.input_spec.signed_turns
     holes = bd.Part(None)
 
     for loop, blade_rot in (
@@ -1297,6 +1299,7 @@ def main() -> None:
                     # every conductor length by 408/436 pushes resonance up
                     # by the same ratio, onto 436 MHz.
                     empirical_tuning_factor=408.0 / 436.0,
+                    antenna_polarization="RHCP",
                 )
             )
         ),
@@ -1312,6 +1315,7 @@ def main() -> None:
                     ratio=0.44,  # Width / height ratio.
                     turns=0.5,  # Half-turn helix.
                     num_wavelengths=1.0,  # One wavelength per loop.
+                    antenna_polarization="LHCP",  # Right-hand helix.
                 )
             ),
             mast_pipe_od=None,

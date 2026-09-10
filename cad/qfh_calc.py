@@ -20,6 +20,7 @@ print_results(results)
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Correction factor tables
@@ -303,9 +304,16 @@ class QfhInputSpec:
         bending_radius = (d/2) / (0.45) = d / 0.9.
     ratio: Diameter-to-height ratio (0.44 typical; 0.3-0.4 for better
                horizon coverage).
-    turns: Helix twist in fractions of a full turn (0.5 = 180°).
+    turns: Helix twist in fractions of a full turn (0.5 = 180°).  Always
+        positive; the winding direction comes from ``antenna_polarization``.
     num_wavelengths: Loop circumference expressed in wavelengths
         (1, 1.5, or 2).
+    antenna_polarization: Sense of the circular polarization the antenna
+        radiates/receives, "RHCP" or "LHCP".  Note that this is the
+        *opposite* of the physical winding: an axial-mode QFH radiates the
+        reverse sense to the way its helix is wound, so **RHCP requires a
+        left-hand physical helix** and LHCP requires a right-hand one.  See
+        ``helix_sign``.
     empirical_tuning_factor: Linear scale applied to every conductor length,
         to pull a built antenna onto frequency.  The calculator assumes a
         bare conductor in free space; a real build sits on printed plastic
@@ -327,6 +335,9 @@ class QfhInputSpec:
     turns: float = 0.5  # Number of turns (0.25 / 0.5 / 0.75 / 1.0)
     # Loop circumference in wavelengths (normally 1):
     num_wavelengths: float = 1.0
+    # Radiated sense; drives the physical winding direction (see helix_sign).
+    # Note that this is the *opposite* of the physical winding direction!
+    antenna_polarization: Literal["RHCP", "LHCP"] = "LHCP"
     # Measured-vs-design frequency correction (1.0 = none):
     empirical_tuning_factor: float = 1.0
 
@@ -336,6 +347,35 @@ class QfhInputSpec:
         assert self.wire_bending_radius > self.wire_diameter
         # A sane correction is a few percent; anything wilder is a typo.
         assert 0.5 < self.empirical_tuning_factor < 2.0  # noqa: PLR2004
+        # Winding direction is set by the polarization, not by the sign of
+        # `turns`, so a negative twist here is a mistake rather than a way
+        # to flip handedness.
+        assert self.turns > 0, "turns must be positive"
+        assert self.antenna_polarization in ("RHCP", "LHCP"), (
+            f"unknown polarization {self.antenna_polarization!r}"
+        )
+
+    @property
+    def helix_sign(self) -> float:
+        """Winding direction: +1.0 right-hand helix, -1.0 left-hand helix.
+
+        The sign multiplies every twist angle, which are all of the form
+        ``360 * turns * z / height`` -- a positive angle winds
+        counter-clockwise seen from above as z rises, which is a right-hand
+        helix.
+
+        An axial-mode helical antenna radiates the *same* sense as its
+        winding, but a QFH is a pair of bifilar loops fed in phase
+        quadrature and its main lobe points along -z through the loops, so
+        the sense it radiates is the reverse of the winding: a **left-hand**
+        wound QFH is **RHCP**.
+        """
+        return -1.0 if self.antenna_polarization == "RHCP" else 1.0
+
+    @property
+    def signed_turns(self) -> float:
+        """``turns`` carrying ``helix_sign``, for twist-angle formulas."""
+        return self.turns * self.helix_sign
 
     def to_pretty_str(self, prefix: str = "") -> str:
         """Return a human-readable representation of the input parameters.
@@ -349,6 +389,10 @@ class QfhInputSpec:
                 prefix + f"Bending radius: {self.wire_bending_radius} mm",
                 prefix + f"Diameter/height ratio: {self.ratio}",
                 prefix + f"Turns: {self.turns}",
+                prefix
+                + f"Polarization: {self.antenna_polarization} "
+                + f"({'left' if self.helix_sign < 0 else 'right'}-hand "
+                + "physical helix)",
                 prefix + f"Loop length: {self.num_wavelengths} wavelengths",
                 prefix
                 + f"Empirical tuning factor: {self.empirical_tuning_factor}",
@@ -384,8 +428,16 @@ class LoopResult:
         corner bends land square on the global X/Y axes -- that shifts the
         helix's own start point forward by ``eps_deg`` before this phase-lead
         rotation is even applied, so it is subtracted back out here.
+
+        ``turns`` may be signed (see ``QfhInputSpec.signed_turns``): a
+        left-hand helix is the mirror image of the right-hand one, so the
+        offset is the same size with the opposite sign.  The magnitude is
+        computed from ``abs(turns)`` because the trim geometry below (a
+        pitch, a tangent component, an arc length) is only meaningful for a
+        positive twist.
         """
-        pitch = self.height / turns
+        magnitude = abs(turns)
+        pitch = self.height / magnitude
         circumferential = math.pi * self.rad  # 2π * (rad/2)
         tz = pitch / math.sqrt(pitch**2 + circumferential**2)
         z0 = wire_bending_radius * tz
@@ -396,7 +448,8 @@ class LoopResult:
             wire_bending_radius * cos_alpha / (radius - wire_bending_radius)
         )
 
-        return 360 * turns * z0 / self.height - eps_deg
+        spin_deg = 360 * magnitude * z0 / self.height - eps_deg
+        return math.copysign(spin_deg, turns)
 
 
 @dataclass

@@ -24,10 +24,11 @@ A 3d-printable QFH antenna frame, made with Build123d. Customizable for any freq
 
 1. Print antenna.
 2. Assemble antenna with copper foil.
-3. Install the [QFHBAL01 PCB](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) in antenna.
+3. Figure out which orientation the [QFHBAL01 PCB](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) should go in, and clip off the standoff that physically interferes with the PCB's SMA connector.
     * Follow the table in its README for the Standard/Anti-standard config.
     * Recommendation: Populate transformer in galvanic isolation mode to protect circuitry against static buildup.
-4. Screw/glue onto a 1.75" OD pipe.
+4. Install the [QFHBAL01 PCB](https://github.com/ODZ-UJF-AV-CR/QFHBAL01) in antenna. Solder wires from foil to PCB.
+5. Screw/glue antenna onto a 1.75" OD pipe.
 
 ## See Also
 

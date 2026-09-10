@@ -16,6 +16,10 @@ A QFH is two independent *bifilar loops* sharing one axis, the second rotated
 * The four **corners** of each loop are the rounded bends of radius
   ``wire_bending_radius`` -- these are "the arcs".
 
+The helix is always built winding right-handed and then mirrored when the
+spec asks for a left-hand one (``antenna_polarization="RHCP"``); see
+``build_qfh_antenna``.
+
 Mapping qfh_calc -> geometry (verified against the solver output):
     rad     = D, cylinder diameter centre-to-centre
     height  = H, vertical extent (bar-to-bar)
@@ -212,6 +216,23 @@ def build_qfh_antenna(
         wire_radius,
     )
     small = small.rotate(bd.Axis.Z, 90)  # Second loop a quarter-turn around.
+
+    # A left-hand antenna (RHCP) is the mirror image of the right-hand one.
+    # It is built by mirroring the finished loops rather than by winding the
+    # helix backwards: the corner-bend trim above (`rho`, `eps_deg`, the z0
+    # offset) is derived for a positive pitch and comes out wrong for a
+    # negative one, whereas a mirror is exact -- every conductor length is
+    # preserved, so the loops stay on the solver's tuned dimensions.  The
+    # mirror plane contains the z axis and both bottom bars, so the bars stay
+    # square on the global X/Y axes.
+    #
+    # The mirrored result is re-wrapped around its own solids: a mirrored
+    # Part carries a reflected transform that survives on its own but
+    # measures as empty once nested as a child of another Compound, and
+    # rebuilding it from `.solids()` bakes the reflection in.
+    if qfh_input_spec.helix_sign < 0:
+        large = bd.Part(bd.mirror(large, about=bd.Plane.XZ).solids())
+        small = bd.Part(bd.mirror(small, about=bd.Plane.XZ).solids())
 
     # Created a named compound (awesome for exploring/viewing).
     large.label = "large_loop"

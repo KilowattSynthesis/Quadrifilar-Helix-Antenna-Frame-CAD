@@ -82,7 +82,7 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Compound:
         loop_height=spec.qfh.small_loop.height,
         wire_diameter=spec.wire_diameter,
         channel_thickness_on_sides=spec.channel_thickness_on_sides,
-        turns=spec.qfh.input_spec.turns,
+        turns=spec.qfh.input_spec.signed_turns,
     ).rotate(bd.Axis.Z, 90)
     # .translate((0, 0, spec.qfh.large_loop.height-spec.qfh.small_loop.height))
 
@@ -92,7 +92,7 @@ def qfh_antenna_frame(spec: PartSpec) -> bd.Compound:
         loop_height=spec.qfh.large_loop.height,
         wire_diameter=spec.wire_diameter,
         channel_thickness_on_sides=spec.channel_thickness_on_sides,
-        turns=spec.qfh.input_spec.turns,
+        turns=spec.qfh.input_spec.signed_turns,
     )
 
     antenna_wire = build_qfh_antenna(
