@@ -33,6 +33,49 @@ jobs:
             uv run python "$file"
           done
 
+      - name: Stage build products for upload
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+
+          # Each CAD script exports into its own build/<script>/ folder, so
+          # collect the files recursively and flatten the folder name into
+          # the asset name: several scripts emit a QFH_Antenna_436_MHz.stl,
+          # and release asset names have to be unique.  The tag goes just
+          # before the extension.
+          rm -rf release-assets
+          mkdir -p release-assets
+          count=0
+          while IFS= read -r -d '' file; do
+            rel="${file#build/}"
+            flat="${rel//\//-}"
+            case "$flat" in
+              *.*) asset="${flat%.*}-$tag.${flat##*.}" ;;
+              *)   asset="$flat-$tag" ;;
+            esac
+            echo "Staging $file as $asset"
+            cp "$file" "release-assets/$asset"
+            count=$((count + 1))
+          done < <(find build -type f -print0)
+
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No build products found under build/"
+            exit 1
+          fi
+          echo "Staged $count build products."
+
+      # Uploaded as a workflow artifact before the release is created, so the
+      # build products are retrievable even if a later step fails.
+      - name: Upload build products to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cad-build-${{ github.ref_name }}
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+
+      # Created only once the build products exist and are safely stored, so
+      # a failure earlier in the job cannot leave an empty release behind.
       - name: Create GitHub Release
         id: create_release
         uses: ncipollo/release-action@v1
@@ -47,15 +90,13 @@ jobs:
         run: sudo apt-get install gh
 
       - name: Upload build products to release
-        if: success()
         run: |
-          echo "Uploading build products to release for ${{  github.ref_name }}"
-          for file in build/*; do
-            # New name: add the tag name to the file name right before the extension
-            new_file=$(echo $file | sed "s/\(.*\)\.\(.*\)/\1-${{  github.ref_name }}.\2/")
-            echo "Uploading $file as $new_file"
-            mv $file $new_file
-            gh release upload ${{  github.ref_name }} "$new_file"
-          done
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          echo "Uploading build products to release for $tag"
+
+          # One call for the lot, and --clobber so re-running the workflow
+          # for an existing tag replaces the assets instead of failing.
+          gh release upload "$tag" release-assets/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
