@@ -283,12 +283,14 @@ class PartSpec:
     mast_bore_clearance: float = 0.4  # Diametral slip fit.
     mast_sleeve_wall: float = 8.0  # Doubled: this is what grips the mast.
     mast_sleeve_length: float = 50.0  # Hangs below the frame.
+
+    # --- Mast sleeve screws ------------------------------------------------
     mast_screw_hole_diameter: float = 3.4  # M3 clearance, into the pipe.
-    mast_screw_count: int = 6
+    mast_screw_count: int = 1
     # One ring of holes per entry, each measured up from the sleeve's open
     # (bottom) end.  Two rows -- one near each end of the sleeve -- grip the
     # pipe without relying on a single ring to resist tilting.
-    mast_screw_rows_z_from_sleeve_end: tuple[float, ...] = (10.0, 35.0)
+    mast_screw_rows_z_from_sleeve_end: tuple[float, ...] = (10.0,)
 
     # Hub plate: fills the 45 deg gaps between the bottom bars so the sleeve
     # and the PCB bosses have something to hang from.
