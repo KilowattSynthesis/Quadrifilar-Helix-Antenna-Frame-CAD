@@ -1416,7 +1416,11 @@ def main() -> None:
                     # plastic rather than through free space.  Shrinking
                     # every conductor length by 408/436 pushes resonance up
                     # by the same ratio, onto 436 MHz.
-                    empirical_tuning_factor=408.0 / 436.0,
+                    # Second iteration: the one-piece print at 408/436
+                    # resonated at 442 MHz (1.4% high, an overcorrection),
+                    # so fold in a further 442/436 to lengthen it back onto
+                    # 436 MHz.  Net factor ~0.9487.
+                    empirical_tuning_factor=(408.0 / 436.0) * (442.0 / 436.0),
                     antenna_polarization="RHCP",
                 )
             )

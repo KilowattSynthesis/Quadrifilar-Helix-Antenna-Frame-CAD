@@ -322,7 +322,8 @@ class QfhInputSpec:
         this to ``f_measured / f_design`` from an S11 sweep of a previous
         print: measuring low means the antenna is electrically too long, and
         a factor below 1.0 shrinks it by the same ratio.  1.0 = uncorrected
-        textbook geometry.
+        textbook geometry.  To refine an already-corrected print, multiply
+        the factor it was built with by its own ``f_measured / f_design``.
 
     """
 
