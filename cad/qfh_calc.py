@@ -299,9 +299,12 @@ class QfhInputSpec:
     Parameters
     ----------
     frequency_hz: Design frequency (Hz).
-    wire_diameter: Conductor outer diameter (mm).
+    wire_diameter: Conductor outer diameter (mm).  For a non-round conductor
+        (e.g. flat foil tape), the diameter of the round wire it is
+        electrically equivalent to.
     wire_bending_radius: Center of bend to conductor center (mm). For copper,
-        bending_radius = (d/2) / (0.45) = d / 0.9.
+        bending_radius = (d/2) / (0.45) = d / 0.9.  For a flat conductor
+        this is set by how it wraps, not by ``wire_diameter``.
     ratio: Diameter-to-height ratio (0.44 typical; 0.3-0.4 for better
                horizon coverage).
     turns: Helix twist in fractions of a full turn (0.5 = 180°).  Always
@@ -344,8 +347,10 @@ class QfhInputSpec:
 
     def __post_init__(self) -> None:
         """Validate."""
-        # Bending radius must be at least a tiny bit larger than diameter.
-        assert self.wire_bending_radius > self.wire_diameter
+        # No lower bound from `wire_diameter`: for a flat conductor that is
+        # an electrical equivalent, and a wide tape wrapped over a sharp edge
+        # legitimately bends far tighter than its equivalent diameter.
+        assert self.wire_bending_radius > 0, "bend radius must be positive"
         # A sane correction is a few percent; anything wilder is a typo.
         assert 0.5 < self.empirical_tuning_factor < 2.0  # noqa: PLR2004
         # Winding direction is set by the polarization, not by the sign of

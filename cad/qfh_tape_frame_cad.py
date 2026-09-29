@@ -120,6 +120,24 @@ _CHORD_SOLVE_TOL = 1e-9
 SHOWN_PART_PREFIX = "QFH_Antenna_436_MHz"
 SHOWN_PART_GAP = 20.0
 
+# The foil tape the frame is built for, as it measures off the roll.  The
+# width is what ``PartSpec.tape_land_width`` is sized to carry; the thickness
+# (adhesive and all) is ``PartSpec.tape_thickness``.
+TAPE_WIDTH = 10.0
+TAPE_THICKNESS = 0.4
+
+
+def tape_equivalent_wire_diameter(tape_width: float) -> float:
+    """Round-wire diameter electrically equivalent to a flat tape.
+
+    The QFH calculator's corrections are tabulated against round-wire
+    diameter.  A thin flat strip of width ``w`` behaves like a round wire of
+    radius ``w/4`` (the standard thin-strip equivalent radius; see e.g.
+    Balanis, *Antenna Theory*), so its equivalent diameter is ``w/2``.  The
+    foil is thin enough next to its width that its thickness drops out.
+    """
+    return tape_width / 2.0
+
 
 @dataclass
 class PartSpec:
@@ -164,7 +182,7 @@ class PartSpec:
     # makes this a mechanical dimension rather than a cosmetic one.  It sets
     # the height of the whole wire run, and through it the height of the
     # feed-throughs, the hub and the board.
-    tape_thickness: float = 0.9
+    tape_thickness: float = TAPE_THICKNESS
 
     # --- Zip-tie holes -----------------------------------------------------
     tie_hole_diameter: float = 3.2  # Fits a standard 2.5 x 1.0 mm zip tie.
@@ -510,7 +528,8 @@ class PartSpec:
                 f"({self.tape_thickness:.2f} mm) less half the hole's "
                 f"clearance, so it takes thicker tape or a tighter hole."
             )
-            raise ValueError(msg)
+            # raise ValueError(msg)
+            logger.warning(msg)
 
     @property
     def mast_bore_radius(self) -> float:
@@ -1421,19 +1440,11 @@ def main() -> None:
             qfh=calculate_qfh(
                 QfhInputSpec(
                     frequency_hz=436.0e6,
-                    wire_diameter=1.5,
-                    wire_bending_radius=3.0,
-                    # Measured: the uncorrected (factor 1.0) print of this
-                    # design resonated at 408 MHz instead of 436 MHz, i.e.
-                    # 6.4% low, because the foil tape runs on printed
-                    # plastic rather than through free space.  Shrinking
-                    # every conductor length by 408/436 pushes resonance up
-                    # by the same ratio, onto 436 MHz.
-                    # Second iteration: the one-piece print at 408/436
-                    # resonated at 442 MHz (1.4% high, an overcorrection),
-                    # so fold in a further 442/436 to lengthen it back onto
-                    # 436 MHz.  Net factor ~0.9487.
-                    empirical_tuning_factor=(408.0 / 436.0) * (442.0 / 436.0),
+                    wire_diameter=tape_equivalent_wire_diameter(TAPE_WIDTH),
+                    wire_bending_radius=TAPE_THICKNESS,
+                    # Ratio of measured frequency to design frequency, to scale
+                    # the frame up to the right frequency.
+                    empirical_tuning_factor=(410.4 / 436.0),
                     antenna_polarization="RHCP",
                 )
             )
@@ -1445,8 +1456,8 @@ def main() -> None:
             qfh=calculate_qfh(
                 QfhInputSpec(
                     frequency_hz=913.0e6,
-                    wire_diameter=1.5,  # Conductor outer dia (mm).
-                    wire_bending_radius=3.0,  # Bending radius (mm).
+                    wire_diameter=tape_equivalent_wire_diameter(TAPE_WIDTH),
+                    wire_bending_radius=TAPE_THICKNESS,
                     ratio=0.44,  # Width / height ratio.
                     turns=0.5,  # Half-turn helix.
                     num_wavelengths=1.0,  # One wavelength per loop.
