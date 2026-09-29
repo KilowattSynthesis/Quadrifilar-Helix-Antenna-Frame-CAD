@@ -63,15 +63,18 @@ The whole hub is **lifted ``hub_rise`` up into the frame**, rather than
 hanging under it, and that is what makes each of those four wires a single
 straight horizontal run.  The tape is stuck to the outside of the frame, so
 its exposed face -- the face the wire is soldered to -- is ``tape_thickness``
-below the bar's underside; the wire lying on it puts its own axis half a wire
-below that again, and it holds that height through the feed-through (which is
-bored concentric with it) and on under the board.  The board's underside --
-the face away from the standoffs, which carries the pads -- sits right on
-top of the wire, ``pcb_thickness`` below its standoff face; hanging that
-face ``pcb_standoff_height`` under the hub is what fixes where the hub goes.
-So the wire never bends: it is soldered flat to the tape at one end and flat
-to the board's pads at the other, and the standoff height is free to be
-whatever the parts on top of the board need.  The mast
+below the bar's underside, and the wire lies on it, so its top face is
+flush with the tape's.  That fixes the **feed-throughs**, which are what
+everything else hangs off: each is bored with its top edge right there, so
+the wire rides against the top of the hole at the height it left the tape.
+The rest stacks up from the holes: the board's underside -- the mast-side
+face, which carries the pads -- is flush with the holes' top edges, so the
+wire comes out of the hole lying flat on the pads; the board's top face is
+``pcb_thickness`` above that; the standoffs are ``pcb_standoff_height``
+above that; and the roof of the mast bore (the hub's underside) is where
+they end.  So the wire never bends: it is soldered flat to the tape at one
+end and flat to the board's pads at the other, and the standoff height is
+free to be whatever the parts on top of the board need.  The mast
 bore rises with the hub, taking a shallow bite out of the bottom of the
 blades where they cross the bore -- under the hub, well inboard of where any
 tape runs.
@@ -290,13 +293,13 @@ class PartSpec:
     # same height, and comes out running flat along the pads on the board's
     # underside.  Both ends are then a straight wire soldered flat onto a
     # flat surface, with nothing to bend or hold in place while the iron is
-    # on it.  Everything below follows from that -- the hole is centred on
-    # the wire, and the hub is lifted up into the frame (``hub_rise``) until
-    # the board's underside sits right on top of the wire.
+    # on it.  Everything below follows from that -- the hole's top edge is
+    # flush with the wire's top face (``feed_hole_top_z``), and the board,
+    # standoffs and hub stack up from there (``hub_rise``).
     feed_wire_diameter: float = 1.5
-    # Diametral clearance of the feed-through around that wire.  Half of it
-    # is also what the hole eats out of the roof between itself and the frame
-    # underside, so it trades threading ease against that roof.
+    # Diametral clearance of the feed-through around that wire.  It all goes
+    # below the wire, since the hole's top edge is pinned to the wire's top
+    # face, so it costs nothing from the roof above the hole.
     feed_wire_hole_clearance: float = 0.7
     # Least roof allowed between the feed-through and the frame underside the
     # tape runs along.  Below this the hole is breaking out into the tape
@@ -525,8 +528,7 @@ class PartSpec:
                 f"of roof under the frame underside the tape runs along "
                 f"(want {self.pcb_wire_hole_roof_min:.2f} mm). The roof is "
                 f"the tape's own thickness "
-                f"({self.tape_thickness:.2f} mm) less half the hole's "
-                f"clearance, so it takes thicker tape or a tighter hole."
+                f"({self.tape_thickness:.2f} mm), so it takes thicker tape."
             )
             # raise ValueError(msg)
             logger.warning(msg)
@@ -555,15 +557,29 @@ class PartSpec:
         return -(self.tape_thickness + self.feed_wire_diameter / 2.0)
 
     @property
+    def feed_hole_top_z(self) -> float:
+        """Height of the feed-throughs' top edge -- the fixed reference.
+
+        Flush with the wire's top face, which is the tape's exposed face, so
+        a wire riding against the top of the hole stays at the height it
+        left the tape.  The board, standoffs and hub all stack up from here.
+        """
+        return self.feed_wire_axis_z + self.feed_wire_diameter / 2.0
+
+    @property
+    def feed_hole_axis_z(self) -> float:
+        """Height of the feed-throughs' axis, a hole radius under the top."""
+        return self.feed_hole_top_z - self.pcb_wire_hole_diameter / 2.0
+
+    @property
     def pcb_pad_face_z(self) -> float:
         """Height of the board's underside, the face carrying the pads.
 
-        The wire comes off the tape at ``feed_wire_axis_z`` and runs on under
-        the board, so the pads sit right on top of it: one wire radius above
-        that axis, which is the tape's own exposed face.  The wire run fixes
-        this; the hub is what moves to suit it.
+        This is the mast side of the board.  It is flush with the
+        feed-throughs' top edge, so the wire comes out of the hole lying
+        flat on the pads.
         """
-        return self.feed_wire_axis_z + self.feed_wire_diameter / 2.0
+        return self.feed_hole_top_z
 
     @property
     def pcb_top_z(self) -> float:
@@ -572,11 +588,12 @@ class PartSpec:
 
     @property
     def hub_rise(self) -> float:
-        """How far the whole hub is lifted up into the frame.
+        """Height of the mast bore's roof (the hub's underside).
 
-        The board hangs ``pcb_standoff_height`` under the hub's underside and
-        its top face has to land on ``pcb_top_z``, so the hub's underside
-        ends up this far *above* the frame's own underside.  The mast bore
+        The last link in the stack that starts at the feed-throughs: the
+        standoffs stand ``pcb_standoff_height`` up from the board's top face
+        (``pcb_top_z``) and the roof is where they end, which puts it this
+        far *above* the frame's own underside.  The mast bore
         rises with it, which is what takes the mast mounting up inside the
         antenna rather than leaving it all hanging below.
         """
@@ -596,11 +613,10 @@ class PartSpec:
     def pcb_wire_hole_roof(self) -> float:
         """Plastic left between the feed-through and the frame underside.
 
-        The hole is centred on the wire, and the wire's own top face is the
-        tape's thickness below the surface, so the roof is that thickness
-        less the half-clearance the hole adds above the wire.
+        The hole's top edge is flush with the wire's top face, which is the
+        tape's thickness below the surface, so the roof is that thickness.
         """
-        return -self.feed_wire_axis_z - self.pcb_wire_hole_diameter / 2.0
+        return -self.feed_hole_top_z
 
     @property
     def tie_hole_bar_z_bottom(self) -> float:
@@ -1096,9 +1112,10 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                     .translate((*_polar(r_mid, ang), z_screw))
                 )
 
-        # One small feed-through per bar, centred on the feed wire so the
-        # wire runs straight through it: the tape stops outside the sleeve,
-        # and the wire carries on at that same height to the board's pad.
+        # One small feed-through per bar, its top edge flush with the feed
+        # wire's top face so the wire runs straight through riding against
+        # it: the tape stops outside the sleeve, and the wire carries on at
+        # that same height to lie flat on the board's pad.
         for ang in BAR_ANGLES_DEG:
             p -= (
                 bd.Cylinder(
@@ -1107,7 +1124,7 @@ def _draw_hub(spec: PartSpec) -> bd.Part | bd.Compound:
                     rotation=(0, 90, 0),  # Axis along X, radial once rotated.
                 )
                 .rotate(bd.Axis.Z, ang)
-                .translate((*_polar(r_mid, ang), spec.feed_wire_axis_z))
+                .translate((*_polar(r_mid, ang), spec.feed_hole_axis_z))
             )
 
     # PCB standoff bosses, hanging below the hub underside, inside the bore.
