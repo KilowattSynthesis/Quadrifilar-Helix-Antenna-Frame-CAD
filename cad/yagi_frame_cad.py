@@ -3,23 +3,25 @@
 Frame for 10 mm copper tape. Layout, in the assembled pose:
 
 * +Z is the firing direction (boom points up, mast at the bottom).
-* Elements run along X and lie in the XZ plane, in FRONT of the boom (0 <= y <= bar_depth).
-* The boom sits BEHIND the elements (-boom_thickness <= y <= 0) so it never interrupts the tape.
+* Elements run along X and lie in the XZ plane, in FRONT of the boom
+  (0 <= y <= bar_depth).
+* The boom sits BEHIND the elements (-boom_thickness <= y <= 0) so it never
+  interrupts the tape.
 * Reflector tape: on the +Z (forward-facing) face of the reflector bar.
 * Driven tape: wrapped around the OUTER perimeter of the folded-dipole frame
-  (top face of top bar, both ends, bottom face of bottom bar). The bottom run is
-  split at x = 0 by the feed gap.
+  (top face of top bar, both ends, bottom face of bottom bar). The bottom run
+  is split at x = 0 by the feed gap.
 
-Each element is printed as two IDENTICAL halves that half-lap over the boom and are
-clamped to it with two M4 bolts (use nylon, especially at the feed). Print two of each
-half.
+Each element is printed as two IDENTICAL halves that half-lap over the boom
+and are clamped to it with two M4 bolts (use nylon, especially at the feed).
+Print two of each half.
 
-Starting dimensions only: tape on plastic, flat conductors and your print material all
-shift resonance. Model it (e.g. 4nec2) and/or verify with a VNA. The reflector has trim
-margin and slotted mounting holes so you can tune length and spacing after printing.
+Starting dimensions only: tape on plastic, flat conductors and your print
+material all shift resonance. Model it (e.g. 4nec2) and/or verify with a VNA.
+The reflector has trim margin and slotted mounting holes so you can tune
+length and spacing after printing.
 """
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,8 @@ from build123d_ease import show
 from loguru import logger
 
 SPEED_OF_LIGHT_MM_PER_S = 299_792_458_000.0
+MIN_REFLECTOR_TO_SOCKET_CLEARANCE = 10.0
+MIN_SOCKET_WALL = 2.0
 
 
 @dataclass
@@ -44,7 +48,8 @@ class Spec:
     # Folded dipole outer height = spacing between its two conductors.
     driven_height: float = 40.0
     # Reflector centreline to folded-dipole centreline (~0.125 λ).
-    # Closer spacing -> lower feed impedance. ~0.12 λ is a starting guess for 50 ohm.
+    # Closer spacing -> lower feed impedance.
+    # ~0.12 λ is a starting guess for 50 ohm.
     element_spacing: float = 86.0
     # Gap in the bottom conductor where the coax is soldered.
     feed_gap: float = 4.0
@@ -53,7 +58,8 @@ class Spec:
     tape_width: float = 10.0
     tape_channel_clearance: float = 0.6
     tape_channel_depth: float = 0.4
-    # Extra bar length beyond the nominal reflector length, per end, for trimming.
+    # Extra bar length beyond the nominal reflector length, per end, for
+    # trimming.
     reflector_trim_margin: float = 8.0
     # Small cross-groove marking the nominal reflector tape end.
     trim_mark_width: float = 0.8
@@ -129,11 +135,11 @@ class Spec:
             self.reflector_standoff
             - self.bar_height / 2
             - self.reflector_slot_travel / 2
-            > 10
+            > MIN_REFLECTOR_TO_SOCKET_CLEARANCE
         ), "Reflector too close to the mast socket"
         if self.mast_pipe_od is not None:
             assert self.mast_pipe_od > 0
-            assert self.socket_wall >= 2
+            assert self.socket_wall >= MIN_SOCKET_WALL
 
     @property
     def wavelength(self) -> float:
@@ -166,22 +172,26 @@ class Spec:
 # ---------------------------------------------------------------------------
 
 
-def _y_prism(sketch: bd.Sketch, y0: float, depth: float) -> bd.Part:
+def _y_prism(
+    sketch: bd.Sketch, y0: float, depth: float
+) -> bd.Part | bd.Compound:
     """Extrude an XY-sketch (X = X, sketch Y = world Z) along +Y from y0."""
-    return bd.Pos(0, y0, 0) * (
+    return bd.Part(None) + bd.Pos(0, y0, 0) * (
         bd.Rot(X=-90) * bd.extrude(sketch, amount=depth)
     )
 
 
-def _y_hole(spec: Spec, x: float, z: float, diameter: float) -> bd.Part:
+def _y_hole(
+    spec: Spec, x: float, z: float, diameter: float
+) -> bd.Part | bd.Compound:
     """Through-hole along Y covering the boom and element bars."""
     length = spec.boom_thickness + spec.bar_depth + 4
-    return bd.Pos(x, (spec.bar_depth - spec.boom_thickness) / 2, z) * (
-        bd.Rot(X=90) * bd.Cylinder(radius=diameter / 2, height=length)
-    )
+    return bd.Part(None) + bd.Pos(
+        x, (spec.bar_depth - spec.boom_thickness) / 2, z
+    ) * (bd.Rot(X=90) * bd.Cylinder(radius=diameter / 2, height=length))
 
 
-def _right_half_region(spec: Spec) -> bd.Part:
+def _right_half_region(spec: Spec) -> bd.Part | bd.Compound:
     """Region kept by the right-hand half of a half-lapped element.
 
     Full section for x >= lap/2; front half (y >= depth/2) across the lap.
@@ -189,7 +199,7 @@ def _right_half_region(spec: Spec) -> bd.Part:
     both halves are the same printed part.
     """
     big = 2000.0
-    outer = bd.Pos(
+    outer = bd.Part(None) + bd.Pos(
         spec.lap_length / 2 + big / 2, spec.bar_depth / 2, 0
     ) * bd.Box(big, spec.bar_depth + 2, big)
     lap = bd.Pos(0, spec.bar_depth * 3 / 4 + 0.5, 0) * bd.Box(
@@ -198,17 +208,21 @@ def _right_half_region(spec: Spec) -> bd.Part:
     return outer + lap
 
 
-def _split(spec: Spec, element: bd.Part) -> tuple[bd.Part, bd.Part]:
+def _split(
+    spec: Spec, element: bd.Part | bd.Compound
+) -> tuple[bd.Part | bd.Compound, bd.Part | bd.Compound]:
     """Split an element into (right, left) half-lap halves."""
     region = _right_half_region(spec)
     return element & region, element - region
 
 
-def _for_printing(part: bd.Part) -> bd.Part:
-    """Lay an element half on its flat front face (+Y) and drop it onto the bed."""
+def _for_printing(part: bd.Part | bd.Compound) -> bd.Part | bd.Compound:
+    """Lay an element half on its front face (+Y) and drop it onto the bed."""
     p = bd.Rot(X=-90) * part  # +Y face -> -Z (bed)
     bb = p.bounding_box()
-    return bd.Pos(-bb.center().X, -bb.center().Y, -bb.min.Z) * p
+    return bd.Part(None) + (
+        bd.Pos(-bb.center().X, -bb.center().Y, -bb.min.Z) * p
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -216,14 +230,14 @@ def _for_printing(part: bd.Part) -> bd.Part:
 # ---------------------------------------------------------------------------
 
 
-def _element_bolt_holes(spec: Spec, z: float) -> bd.Part:
+def _element_bolt_holes(spec: Spec, z: float) -> bd.Part | bd.Compound:
     holes = bd.Part(None)
     for x in (-spec.bolt_x_offset, spec.bolt_x_offset):
         holes += _y_hole(spec, x, z, spec.bolt_hole_diameter)
     return holes
 
 
-def reflector_full(spec: Spec) -> bd.Part:
+def reflector_full(spec: Spec) -> bd.Part | bd.Compound:
     """Reflector bar in its assembled position (before splitting)."""
     z = spec.reflector_z
     bar_len = spec.reflector_length + 2 * spec.reflector_trim_margin
@@ -251,7 +265,7 @@ def reflector_full(spec: Spec) -> bd.Part:
     return p
 
 
-def driven_full(spec: Spec) -> bd.Part:
+def driven_full(spec: Spec) -> bd.Part | bd.Compound:
     """Folded-dipole frame in its assembled position (before splitting)."""
     z = spec.driven_z
     outer_sk = bd.RectangleRounded(
@@ -262,11 +276,13 @@ def driven_full(spec: Spec) -> bd.Part:
         spec.driven_height - 2 * spec.bar_height,
     )
 
-    p = bd.Pos(0, 0, z) * _y_prism(outer_sk - inner_sk, 0, spec.bar_depth)
+    frame_sk = bd.Sketch((outer_sk - inner_sk).faces())
+    p = bd.Part(None) + bd.Pos(0, 0, z) * _y_prism(frame_sk, 0, spec.bar_depth)
 
     # Tape channel: a band around the outer perimeter.
     inset_sk = bd.offset(outer_sk, amount=-spec.tape_channel_depth)
-    band = bd.Pos(0, 0, z) * (
+    assert isinstance(inset_sk, bd.Sketch)  # Type checking.
+    band = bd.Part(None) + bd.Pos(0, 0, z) * (
         _y_prism(outer_sk, -1, spec.bar_depth + 2)
         - _y_prism(inset_sk, -2, spec.bar_depth + 4)
     )
@@ -291,7 +307,7 @@ def driven_full(spec: Spec) -> bd.Part:
 # ---------------------------------------------------------------------------
 
 
-def boom(spec: Spec) -> bd.Part:
+def boom(spec: Spec) -> bd.Part | bd.Compound:
     """Boom with integrated mast socket, in its assembled position."""
     yc = -spec.boom_thickness / 2
     p = bd.Part(None)
@@ -308,7 +324,8 @@ def boom(spec: Spec) -> bd.Part:
         gusset = bd.Pos(0, yc, spec.gusset_height / 2) * bd.Cone(
             outer_r, spec.boom_width / 2, spec.gusset_height
         )
-        # Keep the gusset behind the element plane so it can't touch the reflector.
+        # Keep the gusset behind the element plane so it can't touch the
+        # reflector.
         gusset &= bd.Pos(0, -500, 0) * bd.Box(1000, 1000, 1000)
         p += gusset
 
@@ -385,12 +402,12 @@ def assembly(spec: Spec) -> bd.Compound:
     return bd.Compound(children=[boom(spec), refl_r, refl_l, drv_r, drv_l])
 
 
-def reflector_half(spec: Spec) -> bd.Part:
+def reflector_half(spec: Spec) -> bd.Part | bd.Compound:
     """One reflector half, laid flat for printing. Print 2."""
     return _for_printing(_split(spec, reflector_full(spec))[0])
 
 
-def driven_half(spec: Spec) -> bd.Part:
+def driven_half(spec: Spec) -> bd.Part | bd.Compound:
     """One folded-dipole half, laid flat for printing. Print 2."""
     return _for_printing(_split(spec, driven_full(spec))[0])
 
